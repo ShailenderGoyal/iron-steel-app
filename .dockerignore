@@ -1,0 +1,16 @@
+# Never copy local deps or build artifacts into the image build context
+**/node_modules
+**/dist
+**/build
+
+# Never bake local secrets into the image (Railway provides env vars at runtime)
+**/.env
+.env
+
+# Git / misc
+.git
+.gitignore
+**/*.log
+README.md
+DEPLOY.md
+start.bat

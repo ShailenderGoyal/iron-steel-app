@@ -1,0 +1,52 @@
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import Layout from './components/Layout';
+import LoginPage from './pages/LoginPage';
+import Dashboard from './pages/Dashboard';
+import InventoryCoils from './pages/InventoryCoils';
+import InventorySheets from './pages/InventorySheets';
+import MachinesPage from './pages/MachinesPage';
+import CustomersPage from './pages/CustomersPage';
+import OrdersPage from './pages/OrdersPage';
+import SuppliersPage from './pages/SuppliersPage';
+import OptimizationPage from './pages/OptimizationPage';
+import ProductionPage from './pages/ProductionPage';
+import ScrapPage from './pages/ScrapPage';
+import SettingsPage from './pages/SettingsPage';
+
+function ProtectedRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="text-steel-500">Loading...</div></div>;
+  if (!user) return <Navigate to="/login" replace />;
+  return children;
+}
+
+function AppRoutes() {
+  const { user } = useAuth();
+  return (
+    <Routes>
+      <Route path="/login" element={user ? <Navigate to="/" replace /> : <LoginPage />} />
+      <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+        <Route index element={<Dashboard />} />
+        <Route path="inventory/coils" element={<InventoryCoils />} />
+        <Route path="inventory/sheets" element={<InventorySheets />} />
+        <Route path="machines" element={<MachinesPage />} />
+        <Route path="customers" element={<CustomersPage />} />
+        <Route path="orders" element={<OrdersPage />} />
+        <Route path="suppliers" element={<SuppliersPage />} />
+        <Route path="optimization" element={<OptimizationPage />} />
+        <Route path="production" element={<ProductionPage />} />
+        <Route path="scrap" element={<ScrapPage />} />
+        <Route path="settings" element={<SettingsPage />} />
+      </Route>
+    </Routes>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppRoutes />
+    </AuthProvider>
+  );
+}

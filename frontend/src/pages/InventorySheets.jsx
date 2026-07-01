@@ -1,0 +1,244 @@
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
+import { inventoryAPI, suppliersAPI } from '../services/api';
+import { displayWeight, HARDNESS_LABELS, HARDNESS_COLORS, SHEET_PRESETS } from '../utils/units';
+import PageHeader from '../components/PageHeader';
+import Modal from '../components/Modal';
+import UnitInput from '../components/UnitInput';
+
+const HARDNESS_LIST = ['soft', 'semi_soft', 'medium', 'medium_hard', 'hard'];
+const emptyForm = {
+  length_mm: null, width_mm: null, thickness_mm: null,
+  hardness: 'soft', grade: 'grade_1', format_preset: 'custom',
+  quantity: 1, supplier: '',
+  purchase_date: new Date().toISOString().slice(0, 10), notes: '',
+};
+
+function calcSheetWeight(l, w, t) {
+  if (!l || !w || !t) return 0;
+  return (l * w * t * 7.86) / 1e6;
+}
+
+export default function InventorySheets() {
+  const qc = useQueryClient();
+  const [showModal, setShowModal] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState(emptyForm);
+  const [filter, setFilter] = useState({ hardness: '' });
+
+  const { data: inventory, isLoading } = useQuery({
+    queryKey: ['inventory', 'sheet', filter],
+    queryFn: () => inventoryAPI.getAll({ type: 'sheet', ...filter }).then(r => r.data.sheets),
+  });
+  const { data: suppliers } = useQuery({ queryKey: ['suppliers'], queryFn: () => suppliersAPI.getAll().then(r => r.data) });
+
+  const createMut = useMutation({
+    mutationFn: inventoryAPI.createSheet,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['inventory'] }); qc.invalidateQueries({ queryKey: ['inventory-stats'] }); toast.success('Sheet added'); setShowModal(false); },
+    onError: e => toast.error(e.response?.data?.message || 'Error'),
+  });
+  const updateMut = useMutation({
+    mutationFn: ({ id, data }) => inventoryAPI.updateSheet(id, data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['inventory'] }); toast.success('Updated'); setShowModal(false); },
+    onError: e => toast.error(e.response?.data?.message || 'Error'),
+  });
+  const deleteMut = useMutation({
+    mutationFn: inventoryAPI.deleteSheet,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['inventory'] }); qc.invalidateQueries({ queryKey: ['inventory-stats'] }); toast.success('Removed'); },
+    onError: e => toast.error(e.response?.data?.message || 'Error'),
+  });
+
+  const openAdd = () => { setEditing(null); setForm(emptyForm); setShowModal(true); };
+  const openEdit = (sheet) => {
+    setEditing(sheet._id);
+    setForm({ ...sheet, supplier: sheet.supplier?._id || sheet.supplier || '', purchase_date: sheet.purchase_date?.slice(0, 10) || '' });
+    setShowModal(true);
+  };
+
+  const handlePreset = e => {
+    const preset = SHEET_PRESETS.find(p => p.value === e.target.value);
+    if (preset?.length) setForm(f => ({ ...f, format_preset: preset.value, length_mm: preset.length, width_mm: preset.width }));
+    else setForm(f => ({ ...f, format_preset: 'custom' }));
+  };
+
+  const handleSubmit = e => {
+    e.preventDefault();
+    const data = { ...form };
+    if (!data.supplier) delete data.supplier;
+    if (editing) updateMut.mutate({ id: editing, data });
+    else createMut.mutate(data);
+  };
+
+  const wpSheet = calcSheetWeight(form.length_mm, form.width_mm, form.thickness_mm);
+
+  return (
+    <div>
+      <PageHeader
+        title="Sheet Inventory (पत्र)"
+        subtitle={`${inventory?.length || 0} sheet types in stock`}
+        actions={
+          <div className="flex gap-2">
+            <button onClick={() => window.print()} className="btn-secondary hidden sm:flex">🖨️ Print</button>
+            <button onClick={openAdd} className="btn-primary">+ Add Sheet</button>
+          </div>
+        }
+      />
+
+      <div className="card mb-4">
+        <div className="flex flex-wrap gap-2 items-end">
+          <div className="flex-1 min-w-28">
+            <label className="label">Hardness</label>
+            <select className="select" value={filter.hardness} onChange={e => setFilter(f => ({ ...f, hardness: e.target.value }))}>
+              <option value="">All</option>
+              {HARDNESS_LIST.map(h => <option key={h} value={h}>{HARDNESS_LABELS[h]}</option>)}
+            </select>
+          </div>
+          <button onClick={() => setFilter({ hardness: '' })} className="btn-secondary self-end">Clear</button>
+        </div>
+      </div>
+
+      {/* Mobile cards */}
+      <div className="md:hidden space-y-3">
+        {isLoading && <div className="card text-center text-steel-400">Loading...</div>}
+        {inventory?.length === 0 && <div className="card text-center text-steel-400 py-8">No sheets in stock</div>}
+        {inventory?.map(sheet => (
+          <div key={sheet._id} className="card">
+            <div className="flex items-start justify-between mb-2">
+              <div>
+                <div className="font-semibold">{sheet.length_mm}×{sheet.width_mm}mm {sheet.format_preset !== 'custom' ? `(${sheet.format_preset})` : ''}</div>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${HARDNESS_COLORS[sheet.hardness]}`}>{HARDNESS_LABELS[sheet.hardness]}</span>
+                  <span className="text-xs text-steel-500">{sheet.thickness_mm}mm</span>
+                </div>
+              </div>
+              <div className="flex gap-1">
+                <button onClick={() => openEdit(sheet)} className="btn-secondary px-2 py-1 text-xs">Edit</button>
+                <button onClick={() => { if (window.confirm('Remove?')) deleteMut.mutate(sheet._id); }} className="btn-danger px-2 py-1 text-xs">Del</button>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-sm text-steel-600">
+              <div><span className="text-xs text-steel-400">Qty</span><div>{sheet.quantity} sheets</div></div>
+              <div><span className="text-xs text-steel-400">Wt/sheet</span><div>{displayWeight(sheet.weight_per_sheet_kg)}</div></div>
+              <div>
+                <span className="text-xs text-steel-400">Remaining</span>
+                <div className="flex items-center gap-1">
+                  {displayWeight(sheet.remaining_weight_kg)}
+                  <div className="w-10 h-1.5 bg-steel-200 rounded-full"><div className="h-full bg-green-500 rounded-full" style={{ width: `${(sheet.remaining_weight_kg / sheet.weight_kg) * 100}%` }} /></div>
+                </div>
+              </div>
+              {sheet.supplier?.name && <div><span className="text-xs text-steel-400">Supplier</span><div>{sheet.supplier.name}</div></div>}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden md:block card overflow-x-auto p-0">
+        <table className="w-full text-sm">
+          <thead className="bg-steel-50 border-b border-steel-200">
+            <tr>
+              {['Format', 'Length', 'Width', 'Thickness', 'Hardness', 'Qty', 'Wt/Sheet', 'Total', 'Remaining', 'Supplier', 'Actions'].map(h => (
+                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-steel-600 uppercase">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-steel-100">
+            {isLoading ? (
+              <tr><td colSpan={11} className="px-4 py-8 text-center text-steel-400">Loading...</td></tr>
+            ) : inventory?.length === 0 ? (
+              <tr><td colSpan={11} className="px-4 py-8 text-center text-steel-400">No sheets in stock</td></tr>
+            ) : inventory?.map(sheet => (
+              <tr key={sheet._id} className="hover:bg-steel-50">
+                <td className="px-4 py-3 font-medium">{sheet.format_preset !== 'custom' ? sheet.format_preset : '—'}</td>
+                <td className="px-4 py-3">{sheet.length_mm}mm</td>
+                <td className="px-4 py-3">{sheet.width_mm}mm</td>
+                <td className="px-4 py-3">{sheet.thickness_mm}mm</td>
+                <td className="px-4 py-3"><span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${HARDNESS_COLORS[sheet.hardness]}`}>{HARDNESS_LABELS[sheet.hardness]}</span></td>
+                <td className="px-4 py-3">{sheet.quantity}</td>
+                <td className="px-4 py-3">{displayWeight(sheet.weight_per_sheet_kg)}</td>
+                <td className="px-4 py-3">{displayWeight(sheet.weight_kg)}</td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-1">
+                    {displayWeight(sheet.remaining_weight_kg)}
+                    <div className="w-10 h-1.5 bg-steel-200 rounded-full"><div className="h-full bg-green-500 rounded-full" style={{ width: `${(sheet.remaining_weight_kg / sheet.weight_kg) * 100}%` }} /></div>
+                  </div>
+                </td>
+                <td className="px-4 py-3 text-steel-500">{sheet.supplier?.name || '—'}</td>
+                <td className="px-4 py-3">
+                  <div className="flex gap-1">
+                    <button onClick={() => openEdit(sheet)} className="btn-secondary px-2 py-1 text-xs">Edit</button>
+                    <button onClick={() => { if (window.confirm('Remove?')) deleteMut.mutate(sheet._id); }} className="btn-danger px-2 py-1 text-xs">Del</button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? 'Edit Sheet' : 'Add Sheet (पत्र जोड़ें)'} size="lg">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="label">Format Preset</label>
+            <select className="select" value={form.format_preset} onChange={handlePreset}>
+              {SHEET_PRESETS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <UnitInput label="Length" value_mm={form.length_mm} onChange={v => setForm(f => ({ ...f, length_mm: v }))} required />
+            <UnitInput label="Width (चौड़ाई)" value_mm={form.width_mm} onChange={v => setForm(f => ({ ...f, width_mm: v }))} required />
+            <UnitInput label="Thickness (मोटाई)" value_mm={form.thickness_mm} onChange={v => setForm(f => ({ ...f, thickness_mm: v }))} required />
+            <div>
+              <label className="label">Quantity</label>
+              <input type="number" className="input" min="1" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: parseInt(e.target.value) || 1 }))} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label">Hardness</label>
+              <select className="select" value={form.hardness} onChange={e => setForm(f => ({ ...f, hardness: e.target.value }))}>
+                {HARDNESS_LIST.map(h => <option key={h} value={h}>{HARDNESS_LABELS[h]}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Grade</label>
+              <select className="select" value={form.grade} onChange={e => setForm(f => ({ ...f, grade: e.target.value }))}>
+                <option value="grade_1">Grade 1</option>
+                <option value="grade_2">Grade 2</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label">Supplier</label>
+              <select className="select" value={form.supplier} onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))}>
+                <option value="">— Select —</option>
+                {suppliers?.map(s => <option key={s._id} value={s._id}>{s.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Purchase Date</label>
+              <input type="date" className="input" value={form.purchase_date} onChange={e => setForm(f => ({ ...f, purchase_date: e.target.value }))} />
+            </div>
+          </div>
+          {form.length_mm && form.width_mm && form.thickness_mm && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
+              <div className="text-blue-700 font-medium">
+                Per sheet: <strong>{displayWeight(wpSheet)}</strong> | Total ({form.quantity}): <strong>{displayWeight(wpSheet * form.quantity)}</strong>
+              </div>
+            </div>
+          )}
+          <div>
+            <label className="label">Notes</label>
+            <textarea className="input" rows={2} value={form.notes || ''} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={() => setShowModal(false)} className="btn-secondary">Cancel</button>
+            <button type="submit" className="btn-primary" disabled={createMut.isPending || updateMut.isPending}>{editing ? 'Update' : 'Add Sheet'}</button>
+          </div>
+        </form>
+      </Modal>
+    </div>
+  );
+}
