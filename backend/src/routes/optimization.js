@@ -37,6 +37,15 @@ router.post('/run', async (req, res) => {
       options = await optimizeSheetCutting(lineItem, allMachines, top_n);
     }
 
+    // Supervisors don't see party info: drop customer-based offcut suggestions.
+    if (req.user.role !== 'owner') {
+      for (const opt of options) {
+        if (Array.isArray(opt.offcut_reuse)) {
+          opt.offcut_reuse = opt.offcut_reuse.filter(o => o.type !== 'customer');
+        }
+      }
+    }
+
     res.json({
       order_number: order.order_number,
       line_item: lineItem,

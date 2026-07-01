@@ -23,7 +23,7 @@ function ProtectedRoute({ children }) {
 }
 
 function AppRoutes() {
-  const { user } = useAuth();
+  const { user, isOwner } = useAuth();
   return (
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <LoginPage />} />
@@ -32,7 +32,7 @@ function AppRoutes() {
         <Route path="inventory/coils" element={<InventoryCoils />} />
         <Route path="inventory/sheets" element={<InventorySheets />} />
         <Route path="machines" element={<MachinesPage />} />
-        <Route path="customers" element={<CustomersPage />} />
+        <Route path="customers" element={isOwner ? <CustomersPage /> : <Navigate to="/" replace />} />
         <Route path="orders" element={<OrdersPage />} />
         <Route path="suppliers" element={<SuppliersPage />} />
         <Route path="optimization" element={<OptimizationPage />} />

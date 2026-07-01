@@ -23,20 +23,27 @@ router.get('/', async (req, res) => {
     if (supplier) baseFilter.supplier = supplier;
     if (rust_level) baseFilter.rust_level = rust_level;
 
+    // Supervisors don't see pricing (sales/cost info).
+    const priceSelect = req.user.role === 'owner' ? null : '-purchase_price_per_kg';
+
     let coils = [], sheets = [];
 
     if (!type || type === 'coil') {
       const coilFilter = { ...baseFilter };
       if (gauge_min) coilFilter.gauge_mm = { $gte: Number(gauge_min) };
       if (gauge_max) coilFilter.gauge_mm = { ...coilFilter.gauge_mm, $lte: Number(gauge_max) };
-      coils = await Coil.find(coilFilter).populate('supplier', 'name').sort('-createdAt');
+      let cq = Coil.find(coilFilter).populate('supplier', 'name').sort('-createdAt');
+      if (priceSelect) cq = cq.select(priceSelect);
+      coils = await cq;
     }
 
     if (!type || type === 'sheet') {
       const sheetFilter = { ...baseFilter };
       if (gauge_min) sheetFilter.thickness_mm = { $gte: Number(gauge_min) };
       if (gauge_max) sheetFilter.thickness_mm = { ...sheetFilter.thickness_mm, $lte: Number(gauge_max) };
-      sheets = await Sheet.find(sheetFilter).populate('supplier', 'name').sort('-createdAt');
+      let sq = Sheet.find(sheetFilter).populate('supplier', 'name').sort('-createdAt');
+      if (priceSelect) sq = sq.select(priceSelect);
+      sheets = await sq;
     }
 
     res.json({ coils, sheets });

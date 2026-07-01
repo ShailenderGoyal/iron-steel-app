@@ -3,18 +3,18 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const navItems = [
-  { path: '/', label: 'Dashboard', icon: '📊', exact: true },
+  { path: '/', label: 'Dashboard (डैशबोर्ड)', icon: '📊', exact: true },
   { path: '/inventory/coils', label: 'Coils (माल)', icon: '🔩' },
   { path: '/inventory/sheets', label: 'Sheets (पत्र)', icon: '📄' },
   { path: '/orders', label: 'Orders (ऑर्डर)', icon: '📋' },
-  { path: '/optimization', label: 'Optimization', icon: '⚡' },
-  { path: '/production', label: 'Production', icon: '🏭' },
-  { path: '/customers', label: 'Parties (पार्टी)', icon: '👥' },
-  { path: '/suppliers', label: 'Suppliers', icon: '🏢' },
-  { path: '/machines', label: 'Machines', icon: '⚙️' },
+  { path: '/optimization', label: 'Optimization (अनुकूलन)', icon: '⚡' },
+  { path: '/production', label: 'Production (उत्पादन)', icon: '🏭' },
+  { path: '/customers', label: 'Parties (पार्टी)', icon: '👥', ownerOnly: true },
+  { path: '/suppliers', label: 'Suppliers (सप्लायर)', icon: '🏢' },
+  { path: '/machines', label: 'Machines (मशीन)', icon: '⚙️' },
   { path: '/scrap', label: 'Scrap (रद्दी)', icon: '♻️' },
   { path: '/calculator', label: 'Calculator (कैलकुलेटर)', icon: '🧮' },
-  { path: '/settings', label: 'Settings', icon: '🔧' },
+  { path: '/settings', label: 'Settings (सेटिंग्स)', icon: '🔧' },
 ];
 
 export default function Layout() {
@@ -38,7 +38,7 @@ export default function Layout() {
 
       {/* Nav links */}
       <nav className="flex-1 overflow-y-auto py-2">
-        {navItems.map(item => (
+        {navItems.filter(item => !item.ownerOnly || isOwner).map(item => (
           <NavLink
             key={item.path}
             to={item.path}

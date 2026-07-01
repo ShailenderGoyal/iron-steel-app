@@ -63,6 +63,26 @@ export const RUST_COLORS = {
   rusty: 'bg-orange-200 text-orange-900',
 };
 
+export const ORDER_STATUS_LABELS = {
+  pending: 'Pending / लंबित',
+  in_production: 'In Production / उत्पादन में',
+  ready: 'Ready / तैयार',
+  dispatched: 'Dispatched / भेजा गया',
+  partially_dispatched: 'Partly Dispatched / आंशिक',
+};
+
+export const JOB_STATUS_LABELS = {
+  planned: 'Planned / नियोजित',
+  in_progress: 'In Progress / चालू',
+  completed: 'Completed / पूर्ण',
+  cancelled: 'Cancelled / रद्द',
+};
+
+export const PRIORITY_LABELS = {
+  high: 'High / उच्च',
+  normal: 'Normal / सामान्य',
+};
+
 export const SHEET_PRESETS = [
   { label: '3×8 (914×2438 mm)', value: '3x8', length: 2438, width: 914 },
   { label: '2×4 (610×1219 mm)', value: '2x4', length: 1219, width: 610 },

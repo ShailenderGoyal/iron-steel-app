@@ -1,10 +1,11 @@
 const express = require('express');
 const Customer = require('../models/Customer');
 const Order = require('../models/Order');
-const { protect } = require('../middleware/auth');
+const { protect, ownerOnly } = require('../middleware/auth');
 const router = express.Router();
 
-router.use(protect);
+// Party (customer) records are sales information — owners only.
+router.use(protect, ownerOnly);
 
 router.get('/', async (req, res) => {
   try {
