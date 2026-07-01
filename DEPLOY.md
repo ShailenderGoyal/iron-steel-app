@@ -32,6 +32,8 @@ to GitHub, (3) connect the GitHub repo to Railway and set environment variables.
      mongodb+srv://ironsteel:YOURPASSWORD@cluster0.xxxxx.mongodb.net/iron_steel_db?retryWrites=true&w=majority
      ```
    - Keep this string — it is your `MONGO_URI`.
+   - ⚠️ Paste this **only** into Railway's environment variables — never write it into a
+     tracked file or commit it to the repo.
 
 ---
 
