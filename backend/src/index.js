@@ -52,7 +52,15 @@ if (process.env.NODE_ENV === 'production') {
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/iron_steel_db';
 
-mongoose.connect(MONGO_URI)
+// Startup diagnostics — never print the password.
+const maskedUri = MONGO_URI.replace(/\/\/([^:@/]+):([^@]+)@/, '//$1:****@');
+if (!process.env.MONGO_URI) {
+  console.warn('WARNING: MONGO_URI is not set in this environment — using the localhost fallback. '
+    + 'In production, set MONGO_URI on the host (e.g. Railway → service → Variables).');
+}
+console.log(`Connecting to MongoDB at: ${maskedUri}`);
+
+mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 10000 })
   .then(async () => {
     console.log('MongoDB connected');
     // Optional one-time seeding: set SEED_ON_START=true on the host, deploy once to
