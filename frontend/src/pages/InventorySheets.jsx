@@ -3,11 +3,27 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { inventoryAPI, suppliersAPI } from '../services/api';
 import { displayWeight, HARDNESS_LABELS, HARDNESS_COLORS, SHEET_PRESETS, RUST_LEVELS, RUST_LABELS, RUST_COLORS } from '../utils/units';
+import { exportToCsv, stampedName } from '../utils/exportCsv';
 import PageHeader from '../components/PageHeader';
 import Modal from '../components/Modal';
 import UnitInput from '../components/UnitInput';
 
 const HARDNESS_LIST = ['soft', 'semi_soft', 'medium', 'medium_hard', 'hard'];
+
+const EXPORT_COLUMNS = [
+  { label: 'Format', value: s => (s.format_preset !== 'custom' ? s.format_preset : 'custom') },
+  { label: 'Length (mm)', value: s => s.length_mm },
+  { label: 'Width (mm)', value: s => s.width_mm },
+  { label: 'Thickness (mm)', value: s => s.thickness_mm },
+  { label: 'Hardness', value: s => HARDNESS_LABELS[s.hardness] || s.hardness },
+  { label: 'Rust', value: s => RUST_LABELS[s.rust_level] || s.rust_level },
+  { label: 'Quantity', value: s => s.quantity },
+  { label: 'Wt/Sheet (kg)', value: s => s.weight_per_sheet_kg },
+  { label: 'Total Wt (kg)', value: s => s.weight_kg },
+  { label: 'Remaining (kg)', value: s => s.remaining_weight_kg },
+  { label: 'Supplier', value: s => s.supplier?.name || '' },
+  { label: 'Purchase Date', value: s => (s.purchase_date ? new Date(s.purchase_date).toLocaleDateString() : '') },
+];
 const emptyForm = {
   length_mm: null, width_mm: null, thickness_mm: null,
   hardness: 'soft', grade: 'grade_1', rust_level: 'prime', format_preset: 'custom',
@@ -79,6 +95,7 @@ export default function InventorySheets() {
         subtitle={`${inventory?.length || 0} sheet types in stock`}
         actions={
           <div className="flex gap-2">
+            <button onClick={() => exportToCsv(stampedName('sheets'), EXPORT_COLUMNS, inventory || [])} className="btn-secondary hidden sm:flex">⬇️ Excel</button>
             <button onClick={() => window.print()} className="btn-secondary hidden sm:flex">🖨️ Print</button>
             <button onClick={openAdd} className="btn-primary">+ Add Sheet</button>
           </div>

@@ -3,11 +3,26 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { inventoryAPI, suppliersAPI } from '../services/api';
 import { displayWeight, HARDNESS_LABELS, HARDNESS_COLORS, RUST_LEVELS, RUST_LABELS, RUST_COLORS } from '../utils/units';
+import { exportToCsv, stampedName } from '../utils/exportCsv';
 import PageHeader from '../components/PageHeader';
 import Modal from '../components/Modal';
 import UnitInput from '../components/UnitInput';
 
 const HARDNESS_LIST = ['soft', 'semi_soft', 'medium', 'medium_hard', 'hard'];
+
+const EXPORT_COLUMNS = [
+  { label: 'OD (mm)', value: c => c.od_mm },
+  { label: 'ID (mm)', value: c => c.id_mm },
+  { label: 'Width (mm)', value: c => c.width_mm },
+  { label: 'Gauge (mm)', value: c => c.gauge_mm },
+  { label: 'Hardness', value: c => HARDNESS_LABELS[c.hardness] || c.hardness },
+  { label: 'Grade', value: c => c.grade?.replace('_', ' ') },
+  { label: 'Rust', value: c => RUST_LABELS[c.rust_level] || c.rust_level },
+  { label: 'Total Wt (kg)', value: c => c.weight_kg },
+  { label: 'Remaining (kg)', value: c => c.remaining_weight_kg },
+  { label: 'Supplier', value: c => c.supplier?.name || '' },
+  { label: 'Purchase Date', value: c => (c.purchase_date ? new Date(c.purchase_date).toLocaleDateString() : '') },
+];
 
 function calcCoilWeight(od, id_, width) {
   if (!od || !id_ || !width) return 0;
@@ -76,6 +91,7 @@ export default function InventoryCoils() {
         subtitle={`${inventory?.length || 0} coils in stock`}
         actions={
           <div className="flex gap-2">
+            <button onClick={() => exportToCsv(stampedName('coils'), EXPORT_COLUMNS, inventory || [])} className="btn-secondary hidden sm:flex">⬇️ Excel</button>
             <button onClick={() => window.print()} className="btn-secondary hidden sm:flex">🖨️ Print</button>
             <button onClick={openAdd} className="btn-primary">+ Add Coil</button>
           </div>
