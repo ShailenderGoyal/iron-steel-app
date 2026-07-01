@@ -17,10 +17,11 @@ function calcSheetWeight({ length_mm, width_mm, thickness_mm }) {
 // GET /api/inventory — list all (coils + sheets combined)
 router.get('/', async (req, res) => {
   try {
-    const { type, gauge_min, gauge_max, hardness, supplier } = req.query;
+    const { type, gauge_min, gauge_max, hardness, supplier, rust_level } = req.query;
     const baseFilter = { isActive: true };
     if (hardness) baseFilter.hardness = hardness;
     if (supplier) baseFilter.supplier = supplier;
+    if (rust_level) baseFilter.rust_level = rust_level;
 
     let coils = [], sheets = [];
 

@@ -49,6 +49,20 @@ export const HARDNESS_COLORS = {
   hard: 'bg-red-100 text-red-800',
 };
 
+export const RUST_LEVELS = ['prime', 'little_rust', 'rusty'];
+
+export const RUST_LABELS = {
+  prime: 'Prime',
+  little_rust: 'Little Rust',
+  rusty: 'Rusty',
+};
+
+export const RUST_COLORS = {
+  prime: 'bg-green-100 text-green-800',
+  little_rust: 'bg-amber-100 text-amber-800',
+  rusty: 'bg-orange-200 text-orange-900',
+};
+
 export const SHEET_PRESETS = [
   { label: '3×8 (914×2438 mm)', value: '3x8', length: 2438, width: 914 },
   { label: '2×4 (610×1219 mm)', value: '2x4', length: 1219, width: 610 },

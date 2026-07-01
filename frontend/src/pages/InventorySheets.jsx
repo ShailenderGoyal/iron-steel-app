@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { inventoryAPI, suppliersAPI } from '../services/api';
-import { displayWeight, HARDNESS_LABELS, HARDNESS_COLORS, SHEET_PRESETS } from '../utils/units';
+import { displayWeight, HARDNESS_LABELS, HARDNESS_COLORS, SHEET_PRESETS, RUST_LEVELS, RUST_LABELS, RUST_COLORS } from '../utils/units';
 import PageHeader from '../components/PageHeader';
 import Modal from '../components/Modal';
 import UnitInput from '../components/UnitInput';
@@ -10,7 +10,7 @@ import UnitInput from '../components/UnitInput';
 const HARDNESS_LIST = ['soft', 'semi_soft', 'medium', 'medium_hard', 'hard'];
 const emptyForm = {
   length_mm: null, width_mm: null, thickness_mm: null,
-  hardness: 'soft', grade: 'grade_1', format_preset: 'custom',
+  hardness: 'soft', grade: 'grade_1', rust_level: 'prime', format_preset: 'custom',
   quantity: 1, supplier: '',
   purchase_date: new Date().toISOString().slice(0, 10), notes: '',
 };
@@ -25,7 +25,7 @@ export default function InventorySheets() {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm);
-  const [filter, setFilter] = useState({ hardness: '' });
+  const [filter, setFilter] = useState({ hardness: '', rust_level: '' });
 
   const { data: inventory, isLoading } = useQuery({
     queryKey: ['inventory', 'sheet', filter],
@@ -94,7 +94,14 @@ export default function InventorySheets() {
               {HARDNESS_LIST.map(h => <option key={h} value={h}>{HARDNESS_LABELS[h]}</option>)}
             </select>
           </div>
-          <button onClick={() => setFilter({ hardness: '' })} className="btn-secondary self-end">Clear</button>
+          <div className="flex-1 min-w-28">
+            <label className="label">Rust (जंग)</label>
+            <select className="select" value={filter.rust_level} onChange={e => setFilter(f => ({ ...f, rust_level: e.target.value }))}>
+              <option value="">All</option>
+              {RUST_LEVELS.map(r => <option key={r} value={r}>{RUST_LABELS[r]}</option>)}
+            </select>
+          </div>
+          <button onClick={() => setFilter({ hardness: '', rust_level: '' })} className="btn-secondary self-end">Clear</button>
         </div>
       </div>
 
@@ -107,8 +114,9 @@ export default function InventorySheets() {
             <div className="flex items-start justify-between mb-2">
               <div>
                 <div className="font-semibold">{sheet.length_mm}×{sheet.width_mm}mm {sheet.format_preset !== 'custom' ? `(${sheet.format_preset})` : ''}</div>
-                <div className="flex items-center gap-2 mt-1">
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
                   <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${HARDNESS_COLORS[sheet.hardness]}`}>{HARDNESS_LABELS[sheet.hardness]}</span>
+                  {sheet.rust_level && <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${RUST_COLORS[sheet.rust_level]}`}>{RUST_LABELS[sheet.rust_level]}</span>}
                   <span className="text-xs text-steel-500">{sheet.thickness_mm}mm</span>
                 </div>
               </div>
@@ -138,16 +146,16 @@ export default function InventorySheets() {
         <table className="w-full text-sm">
           <thead className="bg-steel-50 border-b border-steel-200">
             <tr>
-              {['Format', 'Length', 'Width', 'Thickness', 'Hardness', 'Qty', 'Wt/Sheet', 'Total', 'Remaining', 'Supplier', 'Actions'].map(h => (
+              {['Format', 'Length', 'Width', 'Thickness', 'Hardness', 'Rust', 'Qty', 'Wt/Sheet', 'Total', 'Remaining', 'Supplier', 'Actions'].map(h => (
                 <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-steel-600 uppercase">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-steel-100">
             {isLoading ? (
-              <tr><td colSpan={11} className="px-4 py-8 text-center text-steel-400">Loading...</td></tr>
+              <tr><td colSpan={12} className="px-4 py-8 text-center text-steel-400">Loading...</td></tr>
             ) : inventory?.length === 0 ? (
-              <tr><td colSpan={11} className="px-4 py-8 text-center text-steel-400">No sheets in stock</td></tr>
+              <tr><td colSpan={12} className="px-4 py-8 text-center text-steel-400">No sheets in stock</td></tr>
             ) : inventory?.map(sheet => (
               <tr key={sheet._id} className="hover:bg-steel-50">
                 <td className="px-4 py-3 font-medium">{sheet.format_preset !== 'custom' ? sheet.format_preset : '—'}</td>
@@ -155,6 +163,7 @@ export default function InventorySheets() {
                 <td className="px-4 py-3">{sheet.width_mm}mm</td>
                 <td className="px-4 py-3">{sheet.thickness_mm}mm</td>
                 <td className="px-4 py-3"><span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${HARDNESS_COLORS[sheet.hardness]}`}>{HARDNESS_LABELS[sheet.hardness]}</span></td>
+                <td className="px-4 py-3">{sheet.rust_level ? <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${RUST_COLORS[sheet.rust_level]}`}>{RUST_LABELS[sheet.rust_level]}</span> : '—'}</td>
                 <td className="px-4 py-3">{sheet.quantity}</td>
                 <td className="px-4 py-3">{displayWeight(sheet.weight_per_sheet_kg)}</td>
                 <td className="px-4 py-3">{displayWeight(sheet.weight_kg)}</td>
@@ -194,7 +203,7 @@ export default function InventorySheets() {
               <input type="number" className="input" min="1" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: parseInt(e.target.value) || 1 }))} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             <div>
               <label className="label">Hardness</label>
               <select className="select" value={form.hardness} onChange={e => setForm(f => ({ ...f, hardness: e.target.value }))}>
@@ -206,6 +215,12 @@ export default function InventorySheets() {
               <select className="select" value={form.grade} onChange={e => setForm(f => ({ ...f, grade: e.target.value }))}>
                 <option value="grade_1">Grade 1</option>
                 <option value="grade_2">Grade 2</option>
+              </select>
+            </div>
+            <div>
+              <label className="label">Rust (जंग)</label>
+              <select className="select" value={form.rust_level || 'prime'} onChange={e => setForm(f => ({ ...f, rust_level: e.target.value }))}>
+                {RUST_LEVELS.map(r => <option key={r} value={r}>{RUST_LABELS[r]}</option>)}
               </select>
             </div>
           </div>

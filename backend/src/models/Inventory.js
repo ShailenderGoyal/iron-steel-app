@@ -12,6 +12,7 @@ const movementSchema = new mongoose.Schema({
 const baseInventory = {
   hardness: { type: String, enum: ['soft', 'semi_soft', 'medium', 'medium_hard', 'hard'], required: true },
   grade: { type: String, enum: ['grade_1', 'grade_2'], default: 'grade_1' },
+  rust_level: { type: String, enum: ['prime', 'little_rust', 'rusty'], default: 'prime' },
   supplier: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier' },
   purchase_date: { type: Date, default: Date.now },
   purchase_price_per_kg: { type: Number },
