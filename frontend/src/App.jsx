@@ -12,6 +12,7 @@ import SuppliersPage from './pages/SuppliersPage';
 import OptimizationPage from './pages/OptimizationPage';
 import ProductionPage from './pages/ProductionPage';
 import ScrapPage from './pages/ScrapPage';
+import CalculatorPage from './pages/CalculatorPage';
 import SettingsPage from './pages/SettingsPage';
 
 function ProtectedRoute({ children }) {
@@ -37,6 +38,7 @@ function AppRoutes() {
         <Route path="optimization" element={<OptimizationPage />} />
         <Route path="production" element={<ProductionPage />} />
         <Route path="scrap" element={<ScrapPage />} />
+        <Route path="calculator" element={<CalculatorPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Routes>
