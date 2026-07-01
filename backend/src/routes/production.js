@@ -11,6 +11,10 @@ router.get('/plan', async (req, res) => {
   try {
     const date = req.query.date ? new Date(req.query.date) : new Date();
     const plan = await generateDailyPlan(date);
+    // Supervisors don't see the party (customer) identity.
+    if (req.user.role !== 'owner') {
+      Object.values(plan.schedule || {}).forEach(m => (m.jobs || []).forEach(j => { delete j.customer; }));
+    }
     res.json(plan);
   } catch (err) {
     console.error(err);
@@ -28,6 +32,11 @@ router.get('/jobs', async (req, res) => {
       .populate({ path: 'order', select: 'order_number priority deadline', populate: { path: 'customer', select: 'name' } })
       .populate('machine', 'name type')
       .sort([['order.priority', -1], ['order.deadline', 1], ['createdAt', 1]]);
+    // Supervisors don't see the party (customer) identity.
+    if (req.user.role !== 'owner') {
+      const stripped = jobs.map(j => { const o = j.toObject(); if (o.order) delete o.order.customer; return o; });
+      return res.json(stripped);
+    }
     res.json(jobs);
   } catch (err) { res.status(500).json({ message: err.message }); }
 });

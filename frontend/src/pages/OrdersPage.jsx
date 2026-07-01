@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { ordersAPI, customersAPI } from '../services/api';
-import { HARDNESS_LABELS, displayWeight } from '../utils/units';
+import { HARDNESS_LABELS, displayWeight, ORDER_STATUS_LABELS, PRIORITY_LABELS } from '../utils/units';
+import { useAuth } from '../context/AuthContext';
 import PageHeader from '../components/PageHeader';
 import Modal from '../components/Modal';
 
@@ -18,6 +19,7 @@ const emptyLineItem = {
 const emptyForm = { customer: '', deadline: '', priority: 'normal', line_items: [{ ...emptyLineItem }], notes: '' };
 
 export default function OrdersPage() {
+  const { isOwner } = useAuth();
   const qc = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -28,7 +30,7 @@ export default function OrdersPage() {
     queryKey: ['orders', filter],
     queryFn: () => ordersAPI.getAll(filter).then(r => r.data),
   });
-  const { data: customers } = useQuery({ queryKey: ['customers'], queryFn: () => customersAPI.getAll().then(r => r.data) });
+  const { data: customers } = useQuery({ queryKey: ['customers'], queryFn: () => customersAPI.getAll().then(r => r.data), enabled: isOwner });
 
   const createMut = useMutation({ mutationFn: ordersAPI.create, onSuccess: () => { qc.invalidateQueries({ queryKey: ['orders'] }); toast.success('Order created'); setShowModal(false); }, onError: e => toast.error(e.response?.data?.message || 'Error') });
   const updateMut = useMutation({ mutationFn: ({ id, data }) => ordersAPI.update(id, data), onSuccess: () => { qc.invalidateQueries({ queryKey: ['orders'] }); toast.success('Updated'); setShowModal(false); }, onError: e => toast.error(e.response?.data?.message || 'Error') });
@@ -52,7 +54,7 @@ export default function OrdersPage() {
         actions={
           <div className="flex gap-2">
             <button onClick={() => window.print()} className="btn-secondary hidden sm:flex">🖨️ Print</button>
-            <button onClick={openAdd} className="btn-primary">+ New Order</button>
+            {isOwner && <button onClick={openAdd} className="btn-primary">+ New Order</button>}
           </div>
         }
       />
@@ -64,15 +66,15 @@ export default function OrdersPage() {
             <label className="label">Status</label>
             <select className="select" value={filter.status} onChange={e => setFilter(f => ({ ...f, status: e.target.value }))}>
               <option value="">All</option>
-              {STATUS_LIST.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
+              {STATUS_LIST.map(s => <option key={s} value={s}>{ORDER_STATUS_LABELS[s] || s}</option>)}
             </select>
           </div>
           <div className="flex-1 min-w-28">
             <label className="label">Priority</label>
             <select className="select" value={filter.priority} onChange={e => setFilter(f => ({ ...f, priority: e.target.value }))}>
               <option value="">All</option>
-              <option value="high">High</option>
-              <option value="normal">Normal</option>
+              <option value="high">{PRIORITY_LABELS.high}</option>
+              <option value="normal">{PRIORITY_LABELS.normal}</option>
             </select>
           </div>
           <button onClick={() => setFilter({ status: '', priority: '' })} className="btn-secondary self-end">Clear</button>
@@ -88,11 +90,11 @@ export default function OrdersPage() {
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-2 mb-1">
                   <span className="font-bold text-lg">{order.order_number}</span>
-                  {order.priority === 'high' && <span className="badge-high">🔴 High</span>}
-                  <span className={`badge-${order.status}`}>{order.status.replace('_', ' ')}</span>
+                  {order.priority === 'high' && <span className="badge-high">🔴 {PRIORITY_LABELS.high}</span>}
+                  <span className={`badge-${order.status}`}>{ORDER_STATUS_LABELS[order.status] || order.status}</span>
                 </div>
                 <div className="text-steel-600 text-sm">
-                  <span className="font-medium">{order.customer?.name}</span>
+                  {isOwner && order.customer?.name && <span className="font-medium">{order.customer.name}</span>}
                   {order.deadline && <span className="ml-2 text-steel-400">Due: {new Date(order.deadline).toLocaleDateString()}</span>}
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1">
@@ -106,12 +108,16 @@ export default function OrdersPage() {
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
-                <select className="select text-xs w-36" value={order.status} onChange={e => statusMut.mutate({ id: order._id, status: e.target.value })}>
-                  {STATUS_LIST.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
+                <select className="select text-xs w-44" value={order.status} onChange={e => statusMut.mutate({ id: order._id, status: e.target.value })}>
+                  {STATUS_LIST.map(s => <option key={s} value={s}>{ORDER_STATUS_LABELS[s] || s}</option>)}
                 </select>
                 <a href="/optimization" className="btn-primary text-xs">⚡ Optimize</a>
-                <button onClick={() => openEdit(order)} className="btn-secondary text-xs">Edit</button>
-                <button onClick={() => { if (window.confirm('Delete?')) deleteMut.mutate(order._id); }} className="btn-danger text-xs">Del</button>
+                {isOwner && (
+                  <>
+                    <button onClick={() => openEdit(order)} className="btn-secondary text-xs">Edit</button>
+                    <button onClick={() => { if (window.confirm('Delete?')) deleteMut.mutate(order._id); }} className="btn-danger text-xs">Del</button>
+                  </>
+                )}
               </div>
             </div>
           </div>

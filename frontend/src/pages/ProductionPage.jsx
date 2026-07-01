@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { productionAPI } from '../services/api';
-import { displayWeight } from '../utils/units';
+import { displayWeight, JOB_STATUS_LABELS } from '../utils/units';
+import { useAuth } from '../context/AuthContext';
 import PageHeader from '../components/PageHeader';
 
 const STATUS_COLORS = {
@@ -13,6 +14,7 @@ const STATUS_COLORS = {
 };
 
 export default function ProductionPage() {
+  const { isOwner } = useAuth();
   const qc = useQueryClient();
   const [planDate, setPlanDate] = useState(new Date().toISOString().slice(0, 10));
 
@@ -94,7 +96,7 @@ export default function ProductionPage() {
                           <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[job.status]}`}>{job.status}</span>
                         </div>
                         <div className="text-xs text-steel-500 mt-0.5 truncate">
-                          {job.order_number} | {job.customer}
+                          {job.order_number}{isOwner && job.customer ? ` | ${job.customer}` : ''}
                           {job.deadline && ` | Due: ${new Date(job.deadline).toLocaleDateString()}`}
                         </div>
                       </div>
@@ -121,7 +123,7 @@ export default function ProductionPage() {
             <div className="flex items-start justify-between mb-2">
               <div>
                 <div className="font-medium">{job.job_number}</div>
-                <div className="text-xs text-steel-500">{job.order?.customer?.name}</div>
+                {isOwner && <div className="text-xs text-steel-500">{job.order?.customer?.name}</div>}
               </div>
               <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[job.status] || ''}`}>{job.status}</span>
             </div>
@@ -137,7 +139,7 @@ export default function ProductionPage() {
               onChange={e => updateMut.mutate({ id: job._id, data: { status: e.target.value } })}
             >
               {['planned', 'in_progress', 'completed', 'cancelled'].map(s => (
-                <option key={s} value={s}>{s.replace('_', ' ')}</option>
+                <option key={s} value={s}>{JOB_STATUS_LABELS[s] || s}</option>
               ))}
             </select>
           </div>
@@ -152,18 +154,18 @@ export default function ProductionPage() {
           <table className="w-full text-sm">
             <thead className="bg-steel-50 border-b border-steel-200">
               <tr>
-                {['Job #', 'Order', 'Customer', 'Machine', 'Status', 'Est. Time', 'Wastage', 'Sched.', 'Actions'].map(h => (
+                {['Job #', 'Order', ...(isOwner ? ['Customer'] : []), 'Machine', 'Status', 'Est. Time', 'Wastage', 'Sched.', 'Actions'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-steel-600 uppercase">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-steel-100">
-              {allJobs?.length === 0 && <tr><td colSpan={9} className="px-4 py-8 text-center text-steel-400">No jobs</td></tr>}
+              {allJobs?.length === 0 && <tr><td colSpan={isOwner ? 9 : 8} className="px-4 py-8 text-center text-steel-400">No jobs</td></tr>}
               {allJobs?.map(job => (
                 <tr key={job._id} className="hover:bg-steel-50">
                   <td className="px-4 py-3 font-medium">{job.job_number}</td>
                   <td className="px-4 py-3">{job.order?.order_number}</td>
-                  <td className="px-4 py-3">{job.order?.customer?.name}</td>
+                  {isOwner && <td className="px-4 py-3">{job.order?.customer?.name}</td>}
                   <td className="px-4 py-3">{job.machine?.name}</td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[job.status] || ''}`}>{job.status}</span>
@@ -178,7 +180,7 @@ export default function ProductionPage() {
                       onChange={e => updateMut.mutate({ id: job._id, data: { status: e.target.value } })}
                     >
                       {['planned', 'in_progress', 'completed', 'cancelled'].map(s => (
-                        <option key={s} value={s}>{s.replace('_', ' ')}</option>
+                        <option key={s} value={s}>{JOB_STATUS_LABELS[s] || s}</option>
                       ))}
                     </select>
                   </td>

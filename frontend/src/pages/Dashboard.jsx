@@ -17,7 +17,7 @@ function StatCard({ title, value, subtitle, icon, color = 'bg-primary-50 text-pr
 }
 
 export default function Dashboard() {
-  const { user } = useAuth();
+  const { user, isOwner } = useAuth();
 
   const { data: stats } = useQuery({ queryKey: ['inventory-stats'], queryFn: () => inventoryAPI.getStats().then(r => r.data) });
   const { data: orders } = useQuery({ queryKey: ['orders', { status: 'pending' }], queryFn: () => ordersAPI.getAll({ status: 'pending' }).then(r => r.data) });
@@ -61,7 +61,7 @@ export default function Dashboard() {
                       <span className="font-medium text-sm">{order.order_number}</span>
                       {order.priority === 'high' && <span className="badge-high">High</span>}
                     </div>
-                    <div className="text-xs text-steel-500 truncate">{order.customer?.name}</div>
+                    {isOwner && <div className="text-xs text-steel-500 truncate">{order.customer?.name}</div>}
                   </div>
                   <div className="text-right ml-2 flex-shrink-0">
                     <span className={`badge-${order.status}`}>{order.status.replace('_', ' ')}</span>
