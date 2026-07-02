@@ -1,8 +1,9 @@
 const express = require('express');
-const { optimizeCoilCutting, optimizeSheetCutting } = require('../services/optimizationEngine');
+const { optimizeToCoils, optimizeToSheets } = require('../services/optimizationEngine');
 const Machine = require('../models/Machine');
 const Order = require('../models/Order');
 const Customer = require('../models/Customer');
+const Settings = require('../models/Settings');
 const { Coil, Sheet } = require('../models/Inventory');
 const CuttingJob = require('../models/CuttingJob');
 const { protect } = require('../middleware/auth');
@@ -16,7 +17,7 @@ router.use(protect);
  */
 router.post('/run', async (req, res) => {
   try {
-    const { order_id, line_item_id, material_type = 'coil', top_n = 5 } = req.body;
+    const { order_id, line_item_id, top_n = 5 } = req.body;
 
     const order = await Order.findById(order_id);
     if (!order) return res.status(404).json({ message: 'Order not found' });
@@ -24,18 +25,17 @@ router.post('/run', async (req, res) => {
     const lineItem = order.line_items.id(line_item_id);
     if (!lineItem) return res.status(404).json({ message: 'Line item not found' });
 
-    const [allMachines, pendingOrders, allCustomers] = await Promise.all([
+    const [allMachines, pendingOrders, allCustomers, settings] = await Promise.all([
       Machine.find({ status: 'active' }),
       Order.find({ status: { $in: ['pending', 'in_production'] }, _id: { $ne: order_id } }),
       Customer.find({ isActive: true }),
+      Settings.findOne({ singleton_key: 'app_settings' }),
     ]);
 
-    let options;
-    if (material_type === 'coil') {
-      options = await optimizeCoilCutting(lineItem, allMachines, pendingOrders, allCustomers, top_n);
-    } else {
-      options = await optimizeSheetCutting(lineItem, allMachines, top_n);
-    }
+    // Output type is decided by whether the line needs a length (sheet) or not (coil).
+    const options = lineItem.length_mm
+      ? await optimizeToSheets(lineItem, allMachines, pendingOrders, allCustomers, settings, top_n)
+      : await optimizeToCoils(lineItem, allMachines, pendingOrders, allCustomers, settings, top_n);
 
     // Supervisors don't see party info: drop customer-based offcut suggestions.
     if (req.user.role !== 'owner') {
@@ -49,6 +49,7 @@ router.post('/run', async (req, res) => {
     res.json({
       order_number: order.order_number,
       line_item: lineItem,
+      output: lineItem.length_mm ? 'sheet' : 'coil',
       options,
     });
   } catch (err) {
