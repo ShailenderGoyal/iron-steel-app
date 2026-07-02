@@ -27,9 +27,9 @@ export default function LoginPage() {
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-8">
         <div className="text-center mb-8">
           <div className="text-5xl mb-3">⚙️</div>
-          <h1 className="text-2xl font-bold text-steel-900">Iron & Steel</h1>
-          <p className="text-steel-500 text-sm mt-1">Business Management System</p>
-          <p className="text-steel-400 text-xs mt-1">आयरन & स्टील प्रबंधन प्रणाली</p>
+          <h1 className="text-2xl font-bold text-steel-900">Rohini Ispat</h1>
+          <p className="text-steel-500 text-sm mt-1">रोहिणी इस्पात</p>
+          <p className="text-steel-400 text-xs mt-1">Steel Management System</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

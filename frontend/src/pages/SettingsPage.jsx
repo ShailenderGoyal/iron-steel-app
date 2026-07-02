@@ -11,6 +11,7 @@ export default function SettingsPage() {
   const qc = useQueryClient();
   const [form, setForm] = useState(null);
   const [showUserModal, setShowUserModal] = useState(false);
+  const [editingUserId, setEditingUserId] = useState(null);
   const [newUser, setNewUser] = useState({ username: '', password: '', role: 'supervisor' });
 
   const { data: settings } = useQuery({
@@ -45,6 +46,23 @@ export default function SettingsPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); toast.success('User deactivated'); },
     onError: e => toast.error(e.response?.data?.message || 'Error'),
   });
+
+  const updateUserMut = useMutation({
+    mutationFn: async ({ id, data, password }) => {
+      await authAPI.updateUser(id, data);
+      if (password) await authAPI.resetPassword(id, password);
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); toast.success('User updated'); setShowUserModal(false); },
+    onError: e => toast.error(e.response?.data?.message || 'Error'),
+  });
+
+  const openAddUser = () => { setEditingUserId(null); setNewUser({ username: '', password: '', role: 'supervisor' }); setShowUserModal(true); };
+  const openEditUser = (u) => { setEditingUserId(u._id); setNewUser({ username: u.username, password: '', role: u.role }); setShowUserModal(true); };
+  const submitUser = (e) => {
+    e.preventDefault();
+    if (editingUserId) updateUserMut.mutate({ id: editingUserId, data: { username: newUser.username, role: newUser.role }, password: newUser.password });
+    else createUserMut.mutate(newUser);
+  };
 
   if (!form) return <div className="text-steel-400">Loading settings...</div>;
 
@@ -148,7 +166,7 @@ export default function SettingsPage() {
         <div className="card mt-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-lg">User Management</h2>
-            <button onClick={() => setShowUserModal(true)} className="btn-primary text-sm">+ Add User</button>
+            <button onClick={openAddUser} className="btn-primary text-sm">+ Add User</button>
           </div>
           <div className="space-y-2">
             {users?.map(u => (
@@ -161,9 +179,14 @@ export default function SettingsPage() {
                   {!u.isActive && <span className="ml-2 badge-inactive">Inactive</span>}
                 </div>
                 <div className="flex gap-2">
-                  {u.isActive && (
+                  <button onClick={() => openEditUser(u)} className="btn-secondary text-xs px-2 py-1">Edit</button>
+                  {u.isActive ? (
                     <button onClick={() => { if (window.confirm(`Deactivate ${u.username}?`)) deactivateUserMut.mutate(u._id); }} className="btn-danger text-xs px-2 py-1">
                       Deactivate
+                    </button>
+                  ) : (
+                    <button onClick={() => updateUserMut.mutate({ id: u._id, data: { isActive: true } })} className="btn-secondary text-xs px-2 py-1">
+                      Reactivate
                     </button>
                   )}
                 </div>
@@ -191,15 +214,15 @@ export default function SettingsPage() {
       </div>
 
       {/* Add User Modal */}
-      <Modal open={showUserModal} onClose={() => setShowUserModal(false)} title="Add New User">
-        <form onSubmit={e => { e.preventDefault(); createUserMut.mutate(newUser); }} className="space-y-4">
+      <Modal open={showUserModal} onClose={() => setShowUserModal(false)} title={editingUserId ? 'Edit User' : 'Add New User'}>
+        <form onSubmit={submitUser} className="space-y-4">
           <div>
             <label className="label">Username</label>
             <input className="input" value={newUser.username} onChange={e => setNewUser(u => ({ ...u, username: e.target.value }))} required />
           </div>
           <div>
-            <label className="label">Password</label>
-            <input type="password" className="input" value={newUser.password} onChange={e => setNewUser(u => ({ ...u, password: e.target.value }))} required />
+            <label className="label">{editingUserId ? 'New Password (leave blank to keep current)' : 'Password'}</label>
+            <input type="password" className="input" value={newUser.password} onChange={e => setNewUser(u => ({ ...u, password: e.target.value }))} required={!editingUserId} placeholder={editingUserId ? '••••••••' : ''} />
           </div>
           <div>
             <label className="label">Role</label>
@@ -210,7 +233,7 @@ export default function SettingsPage() {
           </div>
           <div className="flex justify-end gap-2">
             <button type="button" onClick={() => setShowUserModal(false)} className="btn-secondary">Cancel</button>
-            <button type="submit" className="btn-primary">Create User</button>
+            <button type="submit" className="btn-primary" disabled={createUserMut.isPending || updateUserMut.isPending}>{editingUserId ? 'Save Changes' : 'Create User'}</button>
           </div>
         </form>
       </Modal>

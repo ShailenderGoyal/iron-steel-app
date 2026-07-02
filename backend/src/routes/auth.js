@@ -63,10 +63,46 @@ router.put('/users/:id/password', protect, ownerOnly, async (req, res) => {
   }
 });
 
-// DELETE /api/auth/users/:id — owner only
+// PUT /api/auth/users/:id — owner only — edit username / role / active
+router.put('/users/:id', protect, ownerOnly, async (req, res) => {
+  try {
+    const { username, role, isActive } = req.body;
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    if (username && username !== user.username) {
+      const existing = await User.findOne({ username, _id: { $ne: user._id } });
+      if (existing) return res.status(409).json({ message: 'Username already exists' });
+      user.username = username;
+    }
+
+    // Safety: never leave the system without an active owner
+    const removingOwner = (role && role !== 'owner') || isActive === false;
+    if (removingOwner && user.role === 'owner' && user.isActive) {
+      const otherOwners = await User.countDocuments({ role: 'owner', isActive: true, _id: { $ne: user._id } });
+      if (otherOwners === 0) return res.status(400).json({ message: 'Cannot remove or demote the last active owner' });
+    }
+
+    if (role) user.role = role;
+    if (isActive !== undefined) user.isActive = isActive;
+    await user.save();
+    res.json({ id: user._id, username: user.username, role: user.role, isActive: user.isActive });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// DELETE /api/auth/users/:id — owner only (deactivate)
 router.delete('/users/:id', protect, ownerOnly, async (req, res) => {
   try {
-    await User.findByIdAndUpdate(req.params.id, { isActive: false });
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (user.role === 'owner' && user.isActive) {
+      const otherOwners = await User.countDocuments({ role: 'owner', isActive: true, _id: { $ne: user._id } });
+      if (otherOwners === 0) return res.status(400).json({ message: 'Cannot deactivate the last active owner' });
+    }
+    user.isActive = false;
+    await user.save();
     res.json({ message: 'User deactivated' });
   } catch (err) {
     res.status(500).json({ message: err.message });

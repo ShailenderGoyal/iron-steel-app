@@ -30,8 +30,8 @@ export default function Layout() {
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-steel-700">
         <div>
-          <div className="font-bold text-sm leading-tight">Iron & Steel</div>
-          <div className="text-steel-400 text-xs">Management System</div>
+          <div className="font-bold text-sm leading-tight">Rohini Ispat</div>
+          <div className="text-steel-400 text-xs">रोहिणी इस्पात</div>
         </div>
         <button onClick={closeNav} className="p-1 rounded hover:bg-steel-700 text-steel-400 hover:text-white md:hidden">✕</button>
       </div>
@@ -95,7 +95,7 @@ export default function Layout() {
         {/* Mobile top bar */}
         <header className="md:hidden bg-steel-900 text-white flex items-center justify-between px-4 py-3 no-print sticky top-0 z-30">
           <button onClick={() => setSidebarOpen(true)} className="text-steel-300 hover:text-white text-xl">☰</button>
-          <span className="font-semibold text-sm">Iron & Steel</span>
+          <span className="font-semibold text-sm">Rohini Ispat</span>
           <span className="text-xs text-steel-400">{user?.username}</span>
         </header>
 
