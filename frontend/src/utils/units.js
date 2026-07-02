@@ -83,6 +83,18 @@ export const PRIORITY_LABELS = {
   normal: 'Normal / सामान्य',
 };
 
+// Directional tolerances: both = ± (over or under ok), plus = + (over only), minus = − (under only)
+export const TOL_DIRECTIONS = ['both', 'plus', 'minus'];
+export const TOL_DIR_LABELS = { both: '± both', plus: '+ over only', minus: '− under only' };
+export const TOL_DIR_SIGN = { both: '±', plus: '+', minus: '−' };
+
+// SRD global fallback used when a party has no default set for a dimension.
+export const DEFAULT_TOLERANCES = {
+  width: { value_mm: 0.2, direction: 'both' },
+  length: { value_mm: 0.5, direction: 'both' },
+  gauge: { value_mm: 0.1, direction: 'minus' },
+};
+
 export const SHEET_PRESETS = [
   { label: '3×8 (914×2438 mm)', value: '3x8', length: 2438, width: 914 },
   { label: '2×4 (610×1219 mm)', value: '2x4', length: 1219, width: 610 },

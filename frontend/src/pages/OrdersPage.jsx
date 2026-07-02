@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { ordersAPI, customersAPI } from '../services/api';
-import { HARDNESS_LABELS, displayWeight, ORDER_STATUS_LABELS, PRIORITY_LABELS } from '../utils/units';
+import { HARDNESS_LABELS, displayWeight, ORDER_STATUS_LABELS, PRIORITY_LABELS, TOL_DIRECTIONS, TOL_DIR_SIGN, DEFAULT_TOLERANCES } from '../utils/units';
 import { useAuth } from '../context/AuthContext';
 import PageHeader from '../components/PageHeader';
 import Modal from '../components/Modal';
@@ -15,6 +15,7 @@ const emptyLineItem = {
   width_mm: '', length_mm: '', thickness_mm: '', hardness: 'soft',
   qty_kg: '', qty_tolerance_pct: 20,
   width_tolerance_mm: 0.2, length_tolerance_mm: 0.5, gauge_tolerance_mm: 0.1,
+  width_tol_dir: 'both', length_tol_dir: 'both', gauge_tol_dir: 'minus',
 };
 
 const emptyForm = { customer: '', deadline: '', priority: 'normal', line_items: [{ ...emptyLineItem }], notes: '' };
@@ -58,6 +59,16 @@ export default function OrdersPage() {
   };
 
   const updateLI = (i, key, val) => setForm(f => { const items = [...f.line_items]; items[i] = { ...items[i], [key]: val }; return { ...f, line_items: items }; });
+
+  // Tolerances (value + direction) prefilled from the selected party's defaults, SRD fallback.
+  const tolsFor = (custId) => {
+    const dt = customers?.find(x => x._id === custId)?.default_tolerances || DEFAULT_TOLERANCES;
+    return {
+      width_tolerance_mm: dt.width?.value_mm ?? 0.2, width_tol_dir: dt.width?.direction || 'both',
+      length_tolerance_mm: dt.length?.value_mm ?? 0.5, length_tol_dir: dt.length?.direction || 'both',
+      gauge_tolerance_mm: dt.gauge?.value_mm ?? 0.1, gauge_tol_dir: dt.gauge?.direction || 'minus',
+    };
+  };
 
   return (
     <div>
@@ -162,7 +173,7 @@ export default function OrdersPage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="sm:col-span-2">
               <label className="label">Party / Customer <span className="text-red-500">*</span></label>
-              <select className="select" value={form.customer} onChange={e => setForm(f => ({ ...f, customer: e.target.value }))} required>
+              <select className="select" value={form.customer} onChange={e => { const cid = e.target.value; const t = tolsFor(cid); setForm(f => ({ ...f, customer: cid, line_items: f.line_items.map(li => ({ ...li, ...t })) })); }} required>
                 <option value="">— Select Party —</option>
                 {customers?.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
               </select>
@@ -183,7 +194,7 @@ export default function OrdersPage() {
           <div>
             <div className="flex items-center justify-between mb-3">
               <h4 className="font-semibold">Line Items</h4>
-              <button type="button" onClick={() => setForm(f => ({ ...f, line_items: [...f.line_items, { ...emptyLineItem }] }))} className="btn-secondary text-xs">+ Add Size</button>
+              <button type="button" onClick={() => setForm(f => ({ ...f, line_items: [...f.line_items, { ...emptyLineItem, ...tolsFor(f.customer) }] }))} className="btn-secondary text-xs">+ Add Size</button>
             </div>
             <div className="space-y-3">
               {form.line_items.map((li, i) => (
@@ -218,12 +229,22 @@ export default function OrdersPage() {
                       <input type="number" className="input" step="0.1" value={li.qty_kg} onChange={e => updateLI(i, 'qty_kg', e.target.value)} required placeholder="500" />
                     </div>
                     <div>
-                      <label className="text-xs text-steel-600">Width Tol. ±mm</label>
-                      <input type="number" className="input" step="0.1" value={li.width_tolerance_mm} onChange={e => updateLI(i, 'width_tolerance_mm', e.target.value)} />
+                      <label className="text-xs text-steel-600">Width Tol.</label>
+                      <div className="flex gap-1">
+                        <input type="number" className="input" step="0.1" value={li.width_tolerance_mm} onChange={e => updateLI(i, 'width_tolerance_mm', e.target.value)} />
+                        <select className="select w-14 px-1" value={li.width_tol_dir || 'both'} onChange={e => updateLI(i, 'width_tol_dir', e.target.value)}>
+                          {TOL_DIRECTIONS.map(d => <option key={d} value={d}>{TOL_DIR_SIGN[d]}</option>)}
+                        </select>
+                      </div>
                     </div>
                     <div>
-                      <label className="text-xs text-steel-600">Gauge Tol. −mm</label>
-                      <input type="number" className="input" step="0.01" value={li.gauge_tolerance_mm} onChange={e => updateLI(i, 'gauge_tolerance_mm', e.target.value)} />
+                      <label className="text-xs text-steel-600">Gauge Tol.</label>
+                      <div className="flex gap-1">
+                        <input type="number" className="input" step="0.01" value={li.gauge_tolerance_mm} onChange={e => updateLI(i, 'gauge_tolerance_mm', e.target.value)} />
+                        <select className="select w-14 px-1" value={li.gauge_tol_dir || 'minus'} onChange={e => updateLI(i, 'gauge_tol_dir', e.target.value)}>
+                          {TOL_DIRECTIONS.map(d => <option key={d} value={d}>{TOL_DIR_SIGN[d]}</option>)}
+                        </select>
+                      </div>
                     </div>
                   </div>
                 </div>

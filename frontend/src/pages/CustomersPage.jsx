@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { customersAPI } from '../services/api';
-import { HARDNESS_LABELS } from '../utils/units';
+import { HARDNESS_LABELS, TOL_DIRECTIONS, TOL_DIR_LABELS, DEFAULT_TOLERANCES } from '../utils/units';
 import PageHeader from '../components/PageHeader';
 import Modal from '../components/Modal';
 
 const HARDNESS_LIST = ['soft', 'semi_soft', 'medium', 'medium_hard', 'hard'];
 const emptyForm = { name: '', contact: '', phone: '', address: '', preferred_sizes: [], notes: '' };
 const emptySize = { width_mm: '', thickness_mm: '', hardness: 'soft', notes: '' };
+const freshTolerances = () => ({ width: { ...DEFAULT_TOLERANCES.width }, length: { ...DEFAULT_TOLERANCES.length }, gauge: { ...DEFAULT_TOLERANCES.gauge } });
 
 export default function CustomersPage() {
   const qc = useQueryClient();
@@ -40,8 +41,13 @@ export default function CustomersPage() {
     onError: e => toast.error(e.response?.data?.message || 'Error'),
   });
 
-  const openAdd = () => { setEditing(null); setForm(emptyForm); setShowModal(true); };
-  const openEdit = (c) => { setEditing(c._id); setForm({ ...c, preferred_sizes: c.preferred_sizes || [] }); setShowModal(true); };
+  const openAdd = () => { setEditing(null); setForm({ ...emptyForm, default_tolerances: freshTolerances() }); setShowModal(true); };
+  const openEdit = (c) => { setEditing(c._id); setForm({ ...c, preferred_sizes: c.preferred_sizes || [], default_tolerances: c.default_tolerances || freshTolerances() }); setShowModal(true); };
+
+  const updateTol = (dim, key, val) => setForm(f => ({
+    ...f,
+    default_tolerances: { ...f.default_tolerances, [dim]: { ...(f.default_tolerances?.[dim] || {}), [key]: val } },
+  }));
 
   const addSize = () => setForm(f => ({ ...f, preferred_sizes: [...f.preferred_sizes, { ...emptySize }] }));
   const removeSize = (i) => setForm(f => ({ ...f, preferred_sizes: f.preferred_sizes.filter((_, idx) => idx !== i) }));
@@ -149,6 +155,22 @@ export default function CustomersPage() {
                 </div>
               </div>
             ))}
+          </div>
+
+          <div>
+            <label className="label">Default Tolerances (सहनशीलता)</label>
+            <div className="space-y-2">
+              {['width', 'length', 'gauge'].map(dim => (
+                <div key={dim} className="grid grid-cols-3 gap-2 items-center">
+                  <span className="text-sm capitalize text-steel-600">{dim === 'gauge' ? 'Gauge/Thickness' : dim}</span>
+                  <input type="number" step="0.01" min="0" className="input" value={form.default_tolerances?.[dim]?.value_mm ?? ''} onChange={e => updateTol(dim, 'value_mm', parseFloat(e.target.value))} placeholder="mm" />
+                  <select className="select" value={form.default_tolerances?.[dim]?.direction || 'both'} onChange={e => updateTol(dim, 'direction', e.target.value)}>
+                    {TOL_DIRECTIONS.map(d => <option key={d} value={d}>{TOL_DIR_LABELS[d]}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+            <div className="text-xs text-steel-400 mt-1">Prefilled onto new orders for this party. ± = both, + = over only, − = under only.</div>
           </div>
 
           <div>

@@ -21,6 +21,15 @@ const { Coil, Sheet } = require('../models/Inventory');
 const r2 = (n) => parseFloat(Number(n).toFixed(2));
 const r3 = (n) => parseFloat(Number(n).toFixed(3));
 
+// Directional tolerance range around a target dimension.
+//   both  -> [t-tol, t+tol]   plus -> [t, t+tol] (over only)   minus -> [t-tol, t] (under only)
+function tolRange(target, tol, dir) {
+  tol = Math.abs(tol || 0);
+  if (dir === 'plus') return { min: target, max: target + tol };
+  if (dir === 'minus') return { min: target - tol, max: target };
+  return { min: target - tol, max: target + tol };
+}
+
 // ---- Machine capability (per the confirmed model) ----
 function fitsWidth(m, width_mm) {
   return width_mm >= m.width_min_mm && width_mm <= m.width_max_mm;
@@ -80,12 +89,13 @@ function findOffcuts(width_mm, gauge, hardness, pendingOrders, customers, tol) {
 
 // ===== COIL output (order has no length): slitter only =====
 async function optimizeToCoils(lineItem, allMachines, pendingOrders, customers, settings, top_n = 5) {
-  const { width_mm: reqW, thickness_mm, hardness, qty_kg, width_tolerance_mm = 0.2, gauge_tolerance_mm = 0.1 } = lineItem;
+  const { width_mm: reqW, thickness_mm, hardness, qty_kg, width_tolerance_mm = 0.2, gauge_tolerance_mm = 0.1, gauge_tol_dir = 'minus' } = lineItem;
   const cutoff = settings?.min_reusable_coil_width_mm ?? 25;
+  const gr = tolRange(thickness_mm, gauge_tolerance_mm, gauge_tol_dir);
 
   const coils = await Coil.find({
     isActive: true, remaining_weight_kg: { $gt: 0 }, hardness,
-    gauge_mm: { $gte: thickness_mm - gauge_tolerance_mm, $lte: thickness_mm },
+    gauge_mm: { $gte: gr.min, $lte: gr.max },
   }).populate('supplier', 'name');
 
   const options = [];
@@ -141,18 +151,21 @@ async function optimizeToCoils(lineItem, allMachines, pendingOrders, customers, 
 // ===== SHEET output (order has length): existing sheets (shear) + coils (slit + shear/CTL) =====
 async function optimizeToSheets(lineItem, allMachines, pendingOrders, customers, settings, top_n = 5) {
   const { width_mm: reqW, length_mm: reqL, thickness_mm, hardness, qty_kg,
-    width_tolerance_mm = 2, length_tolerance_mm = 0.5, gauge_tolerance_mm = 0.1 } = lineItem;
+    width_tolerance_mm = 2, length_tolerance_mm = 0.5, gauge_tolerance_mm = 0.1,
+    gauge_tol_dir = 'minus', width_tol_dir = 'both' } = lineItem;
   const cutoff = settings?.min_reusable_coil_width_mm ?? 25;
+  const gr = tolRange(thickness_mm, gauge_tolerance_mm, gauge_tol_dir);
+  const wr = tolRange(reqW, width_tolerance_mm, width_tol_dir);
   const options = [];
 
   // --- From existing sheets: width must already match; shear to length ---
   const sheets = await Sheet.find({
     isActive: true, remaining_weight_kg: { $gt: 0 }, hardness,
-    thickness_mm: { $gte: thickness_mm - gauge_tolerance_mm, $lte: thickness_mm },
+    thickness_mm: { $gte: gr.min, $lte: gr.max },
   }).populate('supplier', 'name');
 
   for (const sheet of sheets) {
-    if (Math.abs(sheet.width_mm - reqW) > width_tolerance_mm) continue; // can't re-slit a sheet's width
+    if (sheet.width_mm < wr.min || sheet.width_mm > wr.max) continue; // can't re-slit a sheet's width
     const nLen = Math.floor((sheet.length_mm + length_tolerance_mm) / reqL);
     if (nLen < 1) continue;
     const leftoverLen = Math.max(0, sheet.length_mm - nLen * reqL);
@@ -178,7 +191,7 @@ async function optimizeToSheets(lineItem, allMachines, pendingOrders, customers,
   // --- From coils: slit to width (if wider) then shear/CTL to length ---
   const coils = await Coil.find({
     isActive: true, remaining_weight_kg: { $gt: 0 }, hardness,
-    gauge_mm: { $gte: thickness_mm - gauge_tolerance_mm, $lte: thickness_mm },
+    gauge_mm: { $gte: gr.min, $lte: gr.max },
   }).populate('supplier', 'name');
 
   for (const coil of coils) {

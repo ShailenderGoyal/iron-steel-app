@@ -7,12 +7,24 @@ const preferredSizeSchema = new mongoose.Schema({
   notes: { type: String },
 }, { _id: false });
 
+// Directional tolerance: value + direction (both = ±, plus = over only, minus = under only)
+const toleranceSchema = new mongoose.Schema({
+  value_mm: { type: Number, default: 0 },
+  direction: { type: String, enum: ['both', 'plus', 'minus'], default: 'both' },
+}, { _id: false });
+
 const customerSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   contact: { type: String, trim: true },
   phone: { type: String, trim: true },
   address: { type: String, trim: true },
   preferred_sizes: [preferredSizeSchema],
+  // Per-party default tolerances, prefilled onto new orders (SRD values as fallback).
+  default_tolerances: {
+    width: { type: toleranceSchema, default: () => ({ value_mm: 0.2, direction: 'both' }) },
+    length: { type: toleranceSchema, default: () => ({ value_mm: 0.5, direction: 'both' }) },
+    gauge: { type: toleranceSchema, default: () => ({ value_mm: 0.1, direction: 'minus' }) },
+  },
   notes: { type: String },
   isActive: { type: Boolean, default: true },
 }, { timestamps: true });
