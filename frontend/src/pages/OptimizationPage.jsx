@@ -2,14 +2,13 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { ordersAPI, optimizationAPI } from '../services/api';
-import { displayWeight, HARDNESS_LABELS } from '../utils/units';
+import { displayWeight, HARDNESS_LABELS, RUST_LABELS } from '../utils/units';
 import PageHeader from '../components/PageHeader';
 
 export default function OptimizationPage() {
   const qc = useQueryClient();
   const [selectedOrder, setSelectedOrder] = useState('');
   const [selectedLineItem, setSelectedLineItem] = useState('');
-  const [materialType, setMaterialType] = useState('coil');
   const [results, setResults] = useState(null);
   const [selectedOption, setSelectedOption] = useState(null);
   const [selectedMachine, setSelectedMachine] = useState('');
@@ -45,28 +44,31 @@ export default function OptimizationPage() {
 
   const handleRun = () => {
     if (!selectedOrder || !selectedLineItem) { toast.error('Select an order and line item'); return; }
-    runMut.mutate({ order_id: selectedOrder, line_item_id: selectedLineItem, material_type: materialType, top_n: 5 });
+    runMut.mutate({ order_id: selectedOrder, line_item_id: selectedLineItem, top_n: 5 });
   };
 
   const handleConfirm = () => {
     if (!selectedOption || !selectedMachine) { toast.error('Select an option and machine'); return; }
-    const inv_id = materialType === 'coil' ? selectedOption.coil_id : selectedOption.sheet_id;
+    const isCoilSrc = !!selectedOption.coil_id;              // source inventory kind
+    const inv_id = isCoilSrc ? selectedOption.coil_id : selectedOption.sheet_id;
     const qty = lineItemObj?.qty_kg || 0;
+    const slit = selectedOption.slit_step;
 
     confirmMut.mutate({
       order_id: selectedOrder,
       line_item_id: selectedLineItem,
       machine_id: selectedMachine,
       inventory_id: inv_id,
-      inventory_type: materialType,
+      inventory_type: isCoilSrc ? 'coil' : 'sheet',
       material_weight_kg: qty,
-      num_cuts: selectedOption.num_cuts || 2,
+      num_cuts: selectedOption.num_cuts || selectedOption.strips || 2,
       wastage_kg: selectedOption.wastage_kg,
       wastage_pct: selectedOption.wastage_pct,
       scrap_kg: selectedOption.scrap_kg,
       estimated_time_hrs: selectedOption.machines?.find(m => m.machine_id === selectedMachine)?.estimated_time_hrs,
       scheduled_date: schedDate,
-      cut_pieces: [{ width_mm: selectedOption.cut_width_mm || lineItemObj?.width_mm, count: selectedOption.pieces_per_coil_width || 1 }],
+      notes: slit ? `Slit to ${slit.to_width_mm}mm on ${slit.machine_name} first, then cut length` : undefined,
+      cut_pieces: [{ width_mm: selectedOption.cut_width_mm || lineItemObj?.width_mm, length_mm: selectedOption.cut_length_mm, count: selectedOption.pieces_per_coil_width || selectedOption.strips || selectedOption.pieces_per_sheet || 1 }],
     });
   };
 
@@ -111,15 +113,11 @@ export default function OptimizationPage() {
           )}
 
           <div>
-            <label className="label">Material Type</label>
-            <div className="flex gap-2">
-              {['coil', 'sheet'].map(t => (
-                <button key={t} type="button"
-                  onClick={() => setMaterialType(t)}
-                  className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${materialType === t ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-steel-700 border-steel-300 hover:border-primary-400'}`}>
-                  {t === 'coil' ? '🔩 Coil' : '📄 Sheet'}
-                </button>
-              ))}
+            <label className="label">Output</label>
+            <div className="input bg-steel-50 flex items-center" style={{ minHeight: '42px' }}>
+              {lineItemObj
+                ? (lineItemObj.length_mm ? '📄 Sheets — has length' : '🔩 Coil — no length')
+                : '— select a line item —'}
             </div>
           </div>
         </div>
@@ -156,9 +154,13 @@ export default function OptimizationPage() {
           ) : (
             <div className="space-y-3">
               {results.options.map((opt, i) => {
-                const isCoil = !!opt.coil_info;
-                const info = isCoil ? opt.coil_info : opt.sheet_info;
+                const srcInfo = opt.coil_info || opt.sheet_info;
                 const isSelected = selectedOption === opt;
+                const title = opt.output === 'coil'
+                  ? `Slit coil ${srcInfo.width_mm}mm × ${srcInfo.gauge_mm}mm → ${opt.cut_width_mm}mm strips`
+                  : opt.source === 'coil'
+                    ? `Coil ${srcInfo.width_mm}mm × ${srcInfo.gauge_mm}mm → sheets ${opt.cut_width_mm}×${opt.cut_length_mm}mm`
+                    : `Sheet ${srcInfo.width_mm}×${srcInfo.length_mm}mm → cut to ${opt.cut_length_mm}mm`;
 
                 return (
                   <div
@@ -171,15 +173,13 @@ export default function OptimizationPage() {
                         {i === 0 && <span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-0.5 rounded flex-shrink-0">⭐ BEST</span>}
                         <div className="min-w-0">
                           <div className="font-semibold text-sm">
-                            {isCoil
-                              ? `Coil: ${info.width_mm}mm × ${info.gauge_mm}mm — ${HARDNESS_LABELS[info.hardness]}`
-                              : `Sheet: ${info.width_mm}×${info.length_mm}mm × ${info.thickness_mm}mm`
-                            }
+                            {title}
                             {opt.multiple > 1 && <span className="ml-2 text-blue-600 text-xs">({opt.multiple}x)</span>}
                           </div>
                           <div className="text-xs text-steel-500 mt-0.5">
-                            {info.supplier && <span>Supplier: {info.supplier} | </span>}
-                            Remaining: {displayWeight(info.remaining_weight_kg)}
+                            {srcInfo.supplier && <span>Supplier: {srcInfo.supplier} | </span>}
+                            {srcInfo.rust_level && srcInfo.rust_level !== 'prime' && <span className="text-orange-600">{RUST_LABELS[srcInfo.rust_level]} | </span>}
+                            Remaining: {displayWeight(srcInfo.remaining_weight_kg)}
                           </div>
                         </div>
                       </div>
@@ -195,15 +195,20 @@ export default function OptimizationPage() {
                     </div>
 
                     <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
-                      {isCoil && (
+                      {opt.output === 'coil' && (
                         <>
                           <div><div className="text-xs text-steel-400">Cut Width</div><div className="font-medium">{opt.cut_width_mm} mm</div></div>
                           <div><div className="text-xs text-steel-400">Pieces/Width</div><div className="font-medium">{opt.pieces_per_coil_width}</div></div>
-                          <div><div className="text-xs text-steel-400">Leftover</div><div className="font-medium">{opt.leftover_width_mm} mm</div></div>
                         </>
                       )}
-                      {!isCoil && (
-                        <div><div className="text-xs text-steel-400">Pieces/Sheet</div><div className="font-medium">{opt.pieces_per_sheet}</div></div>
+                      {opt.output === 'sheet' && opt.source === 'coil' && (
+                        <div><div className="text-xs text-steel-400">Strips/Width</div><div className="font-medium">{opt.strips}</div></div>
+                      )}
+                      {opt.output === 'sheet' && opt.source === 'sheet' && (
+                        <div><div className="text-xs text-steel-400">Sheets/pc</div><div className="font-medium">{opt.pieces_per_sheet}</div></div>
+                      )}
+                      {opt.reusable_width_mm > 0 && (
+                        <div><div className="text-xs text-steel-400">Reusable</div><div className="font-medium text-green-600">{opt.reusable_width_mm} mm</div></div>
                       )}
                       <div>
                         <div className="text-xs text-steel-400">Wastage (बर्बादी)</div>
@@ -211,12 +216,20 @@ export default function OptimizationPage() {
                       </div>
                     </div>
 
-                    {/* Machines */}
-                    <div className="mt-3 flex flex-wrap gap-2">
+                    {/* Slit pre-step (coil → sheet) */}
+                    {opt.slit_step && (
+                      <div className="mt-2 text-xs bg-amber-50 border border-amber-200 rounded px-2 py-1 text-amber-800">
+                        ✂️ First slit to {opt.slit_step.to_width_mm}mm on <strong>{opt.slit_step.machine_name}</strong> ({opt.slit_step.strips} strips), then cut length:
+                      </div>
+                    )}
+
+                    {/* Cut machines */}
+                    <div className="mt-2 flex flex-wrap gap-2 items-center">
+                      <span className="text-xs text-steel-400">{opt.output === 'coil' ? 'Slit on:' : 'Cut length on:'}</span>
                       {opt.machines?.map(m => (
                         <span key={m.machine_id} className="bg-blue-50 text-blue-700 text-xs px-2 py-1 rounded-lg">
-                          ⚙️ {m.machine_name}
-                          {m.estimated_time_hrs && ` (~${m.estimated_time_hrs.toFixed(1)}h)`}
+                          ⚙️ {m.machine_name}{m.machine_type === 'ctl' ? ' · CTL' : m.machine_type === 'shear' ? ' · Shear' : ''}
+                          {m.estimated_time_hrs != null && ` (~${m.estimated_time_hrs.toFixed(1)}h)`}
                         </span>
                       ))}
                     </div>
