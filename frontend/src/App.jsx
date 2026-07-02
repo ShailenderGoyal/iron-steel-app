@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Layout from './components/Layout';
@@ -14,6 +15,9 @@ import ProductionPage from './pages/ProductionPage';
 import ScrapPage from './pages/ScrapPage';
 import CalculatorPage from './pages/CalculatorPage';
 import SettingsPage from './pages/SettingsPage';
+
+// Lazy-loaded: keeps the charting library (recharts) out of the initial bundle.
+const StatsPage = lazy(() => import('./pages/StatsPage'));
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -39,6 +43,7 @@ function AppRoutes() {
         <Route path="production" element={<ProductionPage />} />
         <Route path="scrap" element={<ScrapPage />} />
         <Route path="calculator" element={<CalculatorPage />} />
+        <Route path="stats" element={isOwner ? <Suspense fallback={<div className="text-steel-500">Loading…</div>}><StatsPage /></Suspense> : <Navigate to="/" replace />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Routes>

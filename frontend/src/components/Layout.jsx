@@ -13,6 +13,7 @@ const navItems = [
   { path: '/suppliers', label: 'Suppliers (सप्लायर)', icon: '🏢' },
   { path: '/machines', label: 'Machines (मशीन)', icon: '⚙️' },
   { path: '/scrap', label: 'Scrap (रद्दी)', icon: '♻️' },
+  { path: '/stats', label: 'Statistics (आँकड़े)', icon: '📈', ownerOnly: true },
   { path: '/calculator', label: 'Calculator (कैलकुलेटर)', icon: '🧮' },
   { path: '/settings', label: 'Settings (सेटिंग्स)', icon: '🔧' },
 ];
