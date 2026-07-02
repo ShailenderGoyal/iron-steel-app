@@ -38,11 +38,15 @@ async function generateDailyPlan(date) {
     .sort([['order.priority', -1], ['order.deadline', 1]]);
 
   const schedule = {};
+  // CTL and Shearing Machine 2 share one resource — they cannot run at the same time,
+  // so their scheduled hours draw from a single shared daily budget.
+  const inCtlGroup = (m) => m.type === 'ctl' || m.name === 'Shearing Machine 2';
+  let ctlGroupUsed = 0;
 
   for (const machine of machines) {
     const machineJobs = jobs.filter(j => j.machine?._id?.toString() === machine._id.toString());
 
-    let time_used = 0;
+    let time_used = inCtlGroup(machine) ? ctlGroupUsed : 0;
     const planned = [];
     let last_width = null;
 
@@ -83,6 +87,8 @@ async function generateDailyPlan(date) {
       });
     }
 
+    if (inCtlGroup(machine)) ctlGroupUsed = time_used;
+
     schedule[machine._id] = {
       machine_id: machine._id,
       machine_name: machine.name,
@@ -90,6 +96,7 @@ async function generateDailyPlan(date) {
       available_hrs,
       used_hrs: parseFloat(time_used.toFixed(2)),
       remaining_hrs: parseFloat((available_hrs - time_used).toFixed(2)),
+      shared_resource: inCtlGroup(machine) ? 'CTL ↔ Shearing 2 (shared)' : null,
       jobs: planned,
     };
   }

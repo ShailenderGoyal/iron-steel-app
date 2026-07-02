@@ -62,7 +62,7 @@ export default function ProductionPage() {
           <div key={machine.machine_id} className="card">
             <div className="flex items-start justify-between gap-2 mb-3">
               <div>
-                <h3 className="font-semibold">{machine.machine_name}</h3>
+                <h3 className="font-semibold">{machine.machine_name}{machine.shared_resource && <span className="ml-2 text-xs font-normal text-amber-600">⚠️ {machine.shared_resource}</span>}</h3>
                 <div className="text-xs text-steel-500">
                   Available: {machine.available_hrs}h | Used: {machine.used_hrs}h |
                   <span className={machine.remaining_hrs < 2 ? ' text-red-500 font-medium' : ' text-green-600'}>
