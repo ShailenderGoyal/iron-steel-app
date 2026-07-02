@@ -12,6 +12,7 @@ export default function OptimizationPage() {
   const [results, setResults] = useState(null);
   const [selectedOption, setSelectedOption] = useState(null);
   const [selectedMachine, setSelectedMachine] = useState('');
+  const [leftoverChoice, setLeftoverChoice] = useState('restock');
   const [schedDate, setSchedDate] = useState(new Date().toISOString().slice(0, 10));
 
   const { data: orders } = useQuery({
@@ -30,11 +31,12 @@ export default function OptimizationPage() {
 
   const confirmMut = useMutation({
     mutationFn: optimizationAPI.confirm,
-    onSuccess: () => {
+    onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['orders'] });
       qc.invalidateQueries({ queryKey: ['inventory'] });
       qc.invalidateQueries({ queryKey: ['inventory-stats'] });
-      toast.success('Cutting job created!');
+      const rc = res?.data?.restocked_coil;
+      toast.success(rc ? `Job created · ${rc.width_mm}mm coil (${Math.round(rc.weight_kg)}kg) restocked` : 'Cutting job created!');
       setResults(null);
       setSelectedOption(null);
       setSelectedOrder('');
@@ -49,10 +51,14 @@ export default function OptimizationPage() {
 
   const handleConfirm = () => {
     if (!selectedOption || !selectedMachine) { toast.error('Select an option and machine'); return; }
-    const isCoilSrc = !!selectedOption.coil_id;              // source inventory kind
-    const inv_id = isCoilSrc ? selectedOption.coil_id : selectedOption.sheet_id;
+    const opt = selectedOption;
+    const isCoilSrc = !!opt.coil_id;                          // source inventory kind
+    const inv_id = isCoilSrc ? opt.coil_id : opt.sheet_id;
     const qty = lineItemObj?.qty_kg || 0;
-    const slit = selectedOption.slit_step;
+    const slit = opt.slit_step;
+    const reusableKg = opt.reusable_weight_kg || 0;
+    const doRestock = reusableKg > 0 && leftoverChoice === 'restock';
+    const info = opt.coil_info || {};
 
     confirmMut.mutate({
       order_id: selectedOrder,
@@ -60,15 +66,17 @@ export default function OptimizationPage() {
       machine_id: selectedMachine,
       inventory_id: inv_id,
       inventory_type: isCoilSrc ? 'coil' : 'sheet',
-      material_weight_kg: qty,
-      num_cuts: selectedOption.num_cuts || selectedOption.strips || 2,
-      wastage_kg: selectedOption.wastage_kg,
-      wastage_pct: selectedOption.wastage_pct,
-      scrap_kg: selectedOption.scrap_kg,
-      estimated_time_hrs: selectedOption.machines?.find(m => m.machine_id === selectedMachine)?.estimated_time_hrs,
+      material_weight_kg: opt.total_consumed_kg || qty,       // whole processed section leaves the source coil
+      num_cuts: opt.num_cuts || opt.strips || 2,
+      wastage_kg: opt.wastage_kg,
+      wastage_pct: opt.wastage_pct,
+      scrap_kg: (opt.scrap_kg || 0) + (reusableKg > 0 && leftoverChoice === 'scrap' ? reusableKg : 0),
+      restock_leftover: doRestock,
+      leftover: doRestock ? { width_mm: opt.reusable_width_mm, gauge_mm: info.gauge_mm, hardness: info.hardness, rust_level: info.rust_level, weight_kg: reusableKg } : null,
+      estimated_time_hrs: opt.machines?.find(m => m.machine_id === selectedMachine)?.estimated_time_hrs,
       scheduled_date: schedDate,
       notes: slit ? `Slit to ${slit.to_width_mm}mm on ${slit.machine_name} first, then cut length` : undefined,
-      cut_pieces: [{ width_mm: selectedOption.cut_width_mm || lineItemObj?.width_mm, length_mm: selectedOption.cut_length_mm, count: selectedOption.pieces_per_coil_width || selectedOption.strips || selectedOption.pieces_per_sheet || 1 }],
+      cut_pieces: [{ width_mm: opt.cut_width_mm || lineItemObj?.width_mm, length_mm: opt.cut_length_mm, count: opt.pieces_per_coil_width || opt.strips || opt.pieces_per_sheet || 1 }],
     });
   };
 
@@ -165,7 +173,7 @@ export default function OptimizationPage() {
                 return (
                   <div
                     key={i}
-                    onClick={() => { setSelectedOption(opt); setSelectedMachine(opt.machines?.[0]?.machine_id || ''); }}
+                    onClick={() => { setSelectedOption(opt); setSelectedMachine(opt.machines?.[0]?.machine_id || ''); setLeftoverChoice('restock'); }}
                     className={`border-2 rounded-xl p-4 cursor-pointer transition-all ${isSelected ? 'border-primary-500 bg-primary-50' : 'border-steel-200 hover:border-primary-300'}`}
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -208,7 +216,7 @@ export default function OptimizationPage() {
                         <div><div className="text-xs text-steel-400">Sheets/pc</div><div className="font-medium">{opt.pieces_per_sheet}</div></div>
                       )}
                       {opt.reusable_width_mm > 0 && (
-                        <div><div className="text-xs text-steel-400">Reusable</div><div className="font-medium text-green-600">{opt.reusable_width_mm} mm</div></div>
+                        <div><div className="text-xs text-steel-400">Reusable leftover</div><div className="font-medium text-green-600">{opt.reusable_width_mm}mm · {displayWeight(opt.reusable_weight_kg || 0)}</div></div>
                       )}
                       <div>
                         <div className="text-xs text-steel-400">Wastage (बर्बादी)</div>
@@ -276,6 +284,29 @@ export default function OptimizationPage() {
               <input type="date" className="input" value={schedDate} onChange={e => setSchedDate(e.target.value)} />
             </div>
           </div>
+
+          {selectedOption.reusable_weight_kg > 0 && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+              <div className="text-sm font-medium text-green-800 mb-2">
+                ♻️ Leftover coil: {selectedOption.reusable_width_mm}mm · {displayWeight(selectedOption.reusable_weight_kg)} — what should happen to it?
+              </div>
+              <div className="flex flex-wrap gap-4 text-sm">
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input type="radio" name="leftover" checked={leftoverChoice === 'restock'} onChange={() => setLeftoverChoice('restock')} />
+                  ↩️ Add back to stock
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input type="radio" name="leftover" checked={leftoverChoice === 'scrap'} onChange={() => setLeftoverChoice('scrap')} />
+                  🗑️ Convert to scrap
+                </label>
+              </div>
+              {selectedOption.total_consumed_kg && (
+                <div className="text-xs text-steel-500 mt-2">
+                  This coil will be reduced by {displayWeight(selectedOption.total_consumed_kg)} = order {displayWeight(lineItemObj?.qty_kg)} + leftover {displayWeight(selectedOption.reusable_weight_kg)}.
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Summary */}
           <div className="bg-steel-50 rounded-xl p-4 mb-4 grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">

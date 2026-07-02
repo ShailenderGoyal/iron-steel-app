@@ -110,11 +110,14 @@ async function optimizeToCoils(lineItem, allMachines, pendingOrders, customers, 
       const n = Math.floor(cw / target);
       if (n < 1) continue;
 
-      const leftoverW = cw - n * target;
+      const usedW = n * target;
+      const leftoverW = cw - usedW;
       const scrapW = leftoverW < cutoff ? leftoverW : 0;      // only sub-cutoff leftover is scrap
       const reusableW = leftoverW >= cutoff ? leftoverW : 0;  // wider leftover is restocked
-      const kgPerMm = coil.weight_kg / cw;
-      const scrapKg = scrapW * kgPerMm;
+      // Leftover runs the full processed length, so it weighs qty * leftoverW/usedW.
+      const leftoverKg = usedW > 0 ? qty_kg * leftoverW / usedW : 0;
+      const reusableKg = reusableW > 0 ? leftoverKg : 0;
+      const scrapKg = scrapW > 0 ? leftoverKg : 0;
 
       const numCuts = n; // n strips + a leftover strip => n slits
       const hasSmall = target < (slitterMachines[0].small_cut_mm || 17);
@@ -134,7 +137,9 @@ async function optimizeToCoils(lineItem, allMachines, pendingOrders, customers, 
         num_cuts: numCuts,
         leftover_width_mm: r3(leftoverW),
         reusable_width_mm: r3(reusableW),
+        reusable_weight_kg: r3(reusableKg),
         scrap_width_mm: r3(scrapW),
+        total_consumed_kg: r3(qty_kg + leftoverKg),
         wastage_pct: r2((scrapW / cw) * 100),
         wastage_kg: r3(scrapKg),
         scrap_kg: r3(scrapKg),
@@ -199,10 +204,13 @@ async function optimizeToSheets(lineItem, allMachines, pendingOrders, customers,
     if (cw + width_tolerance_mm < reqW) continue; // can't widen a coil
     const strips = Math.floor(cw / reqW);
     if (strips < 1) continue;
-    const leftoverW = cw - strips * reqW;
+    const usedW = strips * reqW;
+    const leftoverW = cw - usedW;
     const scrapW = leftoverW < cutoff ? leftoverW : 0;
     const reusableW = leftoverW >= cutoff ? leftoverW : 0;
-    const scrapKg = scrapW * (coil.weight_kg / cw);
+    const leftoverKg = usedW > 0 ? qty_kg * leftoverW / usedW : 0;
+    const reusableKg = reusableW > 0 ? leftoverKg : 0;
+    const scrapKg = scrapW > 0 ? leftoverKg : 0;
     const needsSlit = cw - reqW > width_tolerance_mm; // wider than one strip => must slit
 
     // Length cutters (shear + CTL) that can feed a strip of width reqW
@@ -227,7 +235,8 @@ async function optimizeToSheets(lineItem, allMachines, pendingOrders, customers,
       cut_width_mm: reqW, cut_length_mm: reqL,
       strips,
       needs_slit: needsSlit, slit_step: slitStep,
-      leftover_width_mm: r3(leftoverW), reusable_width_mm: r3(reusableW), scrap_width_mm: r3(scrapW),
+      leftover_width_mm: r3(leftoverW), reusable_width_mm: r3(reusableW), reusable_weight_kg: r3(reusableKg), scrap_width_mm: r3(scrapW),
+      total_consumed_kg: r3(qty_kg + leftoverKg),
       wastage_pct: r2((scrapW / cw) * 100), wastage_kg: r3(scrapKg), scrap_kg: r3(scrapKg), // coil length is continuous -> only width leftover is scrap
       machines: cutters.map(m => ({ machine_id: m._id, machine_name: m.name, machine_type: m.type, estimated_time_hrs: lengthCutTime(m, gauge, tons) })),
       offcut_reuse: findOffcuts(reusableW, gauge, hardness, pendingOrders, customers, width_tolerance_mm),

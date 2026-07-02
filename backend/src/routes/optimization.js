@@ -71,6 +71,7 @@ router.post('/confirm', async (req, res) => {
       num_cuts, wastage_kg, wastage_pct,
       scrap_kg, estimated_time_hrs,
       scheduled_date, notes,
+      restock_leftover, leftover,
     } = req.body;
 
     const order = await Order.findById(order_id);
@@ -112,6 +113,26 @@ router.post('/confirm', async (req, res) => {
       created_by: req.user._id,
     });
 
+    // Restock the reusable leftover strip as a new (narrower) coil, if the user chose to.
+    let restockedCoil = null;
+    if (restock_leftover && leftover && leftover.weight_kg > 0 && inventory_type === 'coil') {
+      const w = parseFloat(Number(leftover.weight_kg).toFixed(3));
+      restockedCoil = await Coil.create({
+        od_mm: item.od_mm,
+        id_mm: item.id_mm,
+        width_mm: leftover.width_mm,
+        gauge_mm: leftover.gauge_mm ?? item.gauge_mm,
+        hardness: leftover.hardness ?? item.hardness,
+        grade: item.grade,
+        rust_level: leftover.rust_level ?? item.rust_level,
+        supplier: item.supplier,
+        weight_kg: w,
+        remaining_weight_kg: w,
+        movements: [{ type: 'adjustment', weight_kg: w, reference: job.job_number, notes: `Leftover restocked from job ${job.job_number}` }],
+        notes: `Leftover ${leftover.width_mm}mm strip from cutting job ${job.job_number}`,
+      });
+    }
+
     // Update order status
     if (order.status === 'pending') {
       order.status = 'in_production';
@@ -119,7 +140,9 @@ router.post('/confirm', async (req, res) => {
     }
 
     await job.populate('machine', 'name type');
-    res.status(201).json(job);
+    const out = job.toObject();
+    if (restockedCoil) out.restocked_coil = { _id: restockedCoil._id, width_mm: restockedCoil.width_mm, weight_kg: restockedCoil.weight_kg, gauge_mm: restockedCoil.gauge_mm };
+    res.status(201).json(out);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: err.message });
