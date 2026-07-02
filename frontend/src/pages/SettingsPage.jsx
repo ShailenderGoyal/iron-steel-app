@@ -114,6 +114,18 @@ export default function SettingsPage() {
               <span className="text-steel-500 text-sm">e.g. 20% = ±20% of ordered quantity</span>
             </div>
           </div>
+
+          <div>
+            <label className="label">Min Reusable Coil Width (mm)</label>
+            <div className="flex items-center gap-2">
+              <input type="number" className="input w-32" min="0" step="1"
+                value={form.min_reusable_coil_width_mm ?? 25}
+                onChange={e => setForm(f => ({ ...f, min_reusable_coil_width_mm: parseFloat(e.target.value) }))}
+                disabled={!isOwner}
+              />
+              <span className="text-steel-500 text-sm">slit leftover below this = scrap; above = restocked as coil</span>
+            </div>
+          </div>
         </div>
 
         {/* Break Times */}

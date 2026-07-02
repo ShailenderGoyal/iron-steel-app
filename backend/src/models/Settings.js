@@ -20,6 +20,8 @@ const settingsSchema = new mongoose.Schema({
   },
   working_hours_per_day: { type: Number, default: 10 },
   qty_tolerance_pct: { type: Number, default: 20 },
+  // Slitting leftover narrower than this is scrap; wider is restocked as a coil.
+  min_reusable_coil_width_mm: { type: Number, default: 25 },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Settings', settingsSchema);
