@@ -11,17 +11,31 @@ const lineItemSchema = new mongoose.Schema({
   length_tolerance_mm: { type: Number, default: 0.5 },
   gauge_tolerance_mm: { type: Number, default: 0.1 },
   fulfilled_kg: { type: Number, default: 0 },
+  dispatched_kg: { type: Number, default: 0 },
   status: { type: String, enum: ['pending', 'in_production', 'fulfilled'], default: 'pending' },
 }, { _id: true });
+
+// A shipment is one dispatch event (e.g. a truck) that can carry several line items.
+const shipmentSchema = new mongoose.Schema({
+  date: { type: Date, default: Date.now },
+  vehicle: { type: String, trim: true },
+  notes: { type: String },
+  dispatched_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  items: [{
+    line_item_id: { type: mongoose.Schema.Types.ObjectId },
+    qty_kg: { type: Number, required: true },
+  }],
+}, { _id: true, timestamps: true });
 
 const orderSchema = new mongoose.Schema({
   order_number: { type: String, unique: true },
   customer: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', required: true },
   date_created: { type: Date, default: Date.now },
   deadline: { type: Date },
-  status: { type: String, enum: ['pending', 'in_production', 'ready', 'dispatched'], default: 'pending' },
+  status: { type: String, enum: ['pending', 'in_production', 'ready', 'partially_dispatched', 'dispatched'], default: 'pending' },
   priority: { type: String, enum: ['high', 'normal'], default: 'normal' },
   line_items: [lineItemSchema],
+  shipments: [shipmentSchema],
   notes: { type: String },
   created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });

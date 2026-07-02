@@ -8,7 +8,8 @@ import PageHeader from '../components/PageHeader';
 import Modal from '../components/Modal';
 
 const HARDNESS_LIST = ['soft', 'semi_soft', 'medium', 'medium_hard', 'hard'];
-const STATUS_LIST = ['pending', 'in_production', 'ready', 'dispatched'];
+const STATUS_LIST = ['pending', 'in_production', 'ready', 'partially_dispatched', 'dispatched'];
+const MANUAL_STATUS = ['pending', 'in_production', 'ready']; // dispatch statuses are set via the shipment flow, not this dropdown
 
 const emptyLineItem = {
   width_mm: '', length_mm: '', thickness_mm: '', hardness: 'soft',
@@ -25,6 +26,8 @@ export default function OrdersPage() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [filter, setFilter] = useState({ status: '', priority: '' });
+  const [dispatchOrder, setDispatchOrder] = useState(null);
+  const [dispatchForm, setDispatchForm] = useState({});
 
   const { data: orders, isLoading } = useQuery({
     queryKey: ['orders', filter],
@@ -36,6 +39,16 @@ export default function OrdersPage() {
   const updateMut = useMutation({ mutationFn: ({ id, data }) => ordersAPI.update(id, data), onSuccess: () => { qc.invalidateQueries({ queryKey: ['orders'] }); toast.success('Updated'); setShowModal(false); }, onError: e => toast.error(e.response?.data?.message || 'Error') });
   const statusMut = useMutation({ mutationFn: ({ id, status }) => ordersAPI.updateStatus(id, status), onSuccess: () => { qc.invalidateQueries({ queryKey: ['orders'] }); toast.success('Status updated'); }, onError: e => toast.error(e.response?.data?.message || 'Error') });
   const deleteMut = useMutation({ mutationFn: ordersAPI.delete, onSuccess: () => { qc.invalidateQueries({ queryKey: ['orders'] }); toast.success('Deleted'); }, onError: e => toast.error(e.response?.data?.message || 'Error') });
+  const dispatchMut = useMutation({ mutationFn: ({ id, data }) => ordersAPI.addShipment(id, data), onSuccess: () => { qc.invalidateQueries({ queryKey: ['orders'] }); toast.success('Dispatch recorded'); setDispatchOrder(null); setDispatchForm({}); }, onError: e => toast.error(e.response?.data?.message || 'Error') });
+
+  const submitDispatch = (e) => {
+    e.preventDefault();
+    const items = (dispatchOrder?.line_items || [])
+      .map(li => ({ line_item_id: li._id, qty_kg: parseFloat(dispatchForm[li._id]) }))
+      .filter(it => it.qty_kg > 0);
+    if (!items.length) { toast.error('Enter a quantity to dispatch'); return; }
+    dispatchMut.mutate({ id: dispatchOrder._id, data: { items, vehicle: dispatchForm._vehicle, notes: dispatchForm._notes } });
+  };
 
   const openAdd = () => { setEditing(null); setForm({ ...emptyForm, line_items: [{ ...emptyLineItem }] }); setShowModal(true); };
   const openEdit = (order) => {
@@ -103,15 +116,35 @@ export default function OrdersPage() {
                       <span className="font-medium">{li.width_mm}mm</span>
                       {li.length_mm && <span>×{li.length_mm}mm</span>}
                       <span> | {li.thickness_mm}mm | {HARDNESS_LABELS[li.hardness]} | {displayWeight(li.qty_kg)}</span>
+                      {li.dispatched_kg > 0 && <span className="text-green-600 font-medium"> · 📦{displayWeight(li.dispatched_kg)}</span>}
                     </div>
                   ))}
                 </div>
+
+                {order.shipments?.length > 0 && (
+                  <div className="mt-2 text-xs bg-indigo-50 rounded p-2">
+                    <div className="font-medium text-indigo-700">
+                      📦 Dispatched {displayWeight(order.line_items.reduce((a, li) => a + (li.dispatched_kg || 0), 0))} / {displayWeight(order.line_items.reduce((a, li) => a + li.qty_kg, 0))}
+                      {' · '}{order.shipments.length} shipment{order.shipments.length > 1 ? 's' : ''}
+                    </div>
+                    <div className="text-steel-500 mt-0.5 space-y-0.5">
+                      {order.shipments.map((s, si) => (
+                        <div key={si}>• {new Date(s.date).toLocaleDateString()} — {s.items.reduce((a, it) => a + it.qty_kg, 0).toFixed(0)}kg{s.vehicle ? ` · ${s.vehicle}` : ''}{s.notes ? ` · ${s.notes}` : ''}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
-                <select className="select text-xs w-44" value={order.status} onChange={e => statusMut.mutate({ id: order._id, status: e.target.value })}>
-                  {STATUS_LIST.map(s => <option key={s} value={s}>{ORDER_STATUS_LABELS[s] || s}</option>)}
-                </select>
+                {MANUAL_STATUS.includes(order.status) && (
+                  <select className="select text-xs w-44" value={order.status} onChange={e => statusMut.mutate({ id: order._id, status: e.target.value })}>
+                    {MANUAL_STATUS.map(s => <option key={s} value={s}>{ORDER_STATUS_LABELS[s] || s}</option>)}
+                  </select>
+                )}
                 <a href="/optimization" className="btn-primary text-xs">⚡ Optimize</a>
+                {isOwner && order.status !== 'dispatched' && (
+                  <button onClick={() => { setDispatchOrder(order); setDispatchForm({}); }} className="btn-success text-xs">📦 Dispatch</button>
+                )}
                 {isOwner && (
                   <>
                     <button onClick={() => openEdit(order)} className="btn-secondary text-xs">Edit</button>
@@ -207,6 +240,45 @@ export default function OrdersPage() {
             <button type="submit" className="btn-primary">{editing ? 'Update Order' : 'Create Order'}</button>
           </div>
         </form>
+      </Modal>
+
+      {/* Dispatch modal */}
+      <Modal open={!!dispatchOrder} onClose={() => setDispatchOrder(null)} title={`Dispatch — ${dispatchOrder?.order_number || ''}`} size="lg">
+        {dispatchOrder && (
+          <form onSubmit={submitDispatch} className="space-y-4">
+            <div className="space-y-2">
+              {dispatchOrder.line_items.map((li, i) => {
+                const remaining = li.qty_kg - (li.dispatched_kg || 0);
+                const done = remaining <= 0.001;
+                return (
+                  <div key={li._id || i} className="border border-steel-200 rounded-lg p-3">
+                    <div className="flex justify-between items-center text-sm gap-2">
+                      <span className="font-medium">{li.width_mm}mm{li.length_mm ? `×${li.length_mm}mm` : ''} · {li.thickness_mm}mm · {HARDNESS_LABELS[li.hardness]}</span>
+                      <span className="text-steel-500 text-xs whitespace-nowrap">{displayWeight(li.dispatched_kg || 0)} / {displayWeight(li.qty_kg)}</span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <label className="text-xs text-steel-600 whitespace-nowrap">Dispatch now (kg)</label>
+                      <input type="number" step="0.1" min="0" max={remaining}
+                        className="input w-32" placeholder={done ? '—' : `max ${remaining.toFixed(1)}`}
+                        value={dispatchForm[li._id] || ''}
+                        onChange={e => setDispatchForm(f => ({ ...f, [li._id]: e.target.value }))}
+                        disabled={done} />
+                      {done && <span className="text-xs text-green-600">✓ done</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="label">Vehicle (गाड़ी)</label><input className="input" value={dispatchForm._vehicle || ''} onChange={e => setDispatchForm(f => ({ ...f, _vehicle: e.target.value }))} placeholder="e.g. HR-55-1234" /></div>
+              <div><label className="label">Notes</label><input className="input" value={dispatchForm._notes || ''} onChange={e => setDispatchForm(f => ({ ...f, _notes: e.target.value }))} /></div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setDispatchOrder(null)} className="btn-secondary">Cancel</button>
+              <button type="submit" className="btn-primary" disabled={dispatchMut.isPending}>Record Dispatch</button>
+            </div>
+          </form>
+        )}
       </Modal>
     </div>
   );

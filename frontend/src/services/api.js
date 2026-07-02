@@ -76,6 +76,7 @@ export const ordersAPI = {
   create: (data) => api.post('/orders', data),
   update: (id, data) => api.put(`/orders/${id}`, data),
   updateStatus: (id, status) => api.patch(`/orders/${id}/status`, { status }),
+  addShipment: (id, data) => api.post(`/orders/${id}/shipments`, data),
   delete: (id) => api.delete(`/orders/${id}`),
 };
 
