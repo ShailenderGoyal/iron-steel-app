@@ -6,6 +6,7 @@ import { HARDNESS_LABELS, displayWeight, ORDER_STATUS_LABELS, PRIORITY_LABELS, T
 import { useAuth } from '../context/AuthContext';
 import PageHeader from '../components/PageHeader';
 import Modal from '../components/Modal';
+import SearchableSelect from '../components/SearchableSelect';
 
 const HARDNESS_LIST = ['soft', 'semi_soft', 'medium', 'medium_hard', 'hard'];
 const STATUS_LIST = ['pending', 'in_production', 'ready', 'partially_dispatched', 'dispatched'];
@@ -169,14 +170,16 @@ export default function OrdersPage() {
       </div>
 
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? 'Edit Order' : 'New Order'} size="xl">
-        <form onSubmit={e => { e.preventDefault(); editing ? updateMut.mutate({ id: editing, data: form }) : createMut.mutate(form); }} className="space-y-4">
+        <form onSubmit={e => { e.preventDefault(); if (!form.customer) { toast.error('Select a party'); return; } editing ? updateMut.mutate({ id: editing, data: form }) : createMut.mutate(form); }} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="sm:col-span-2">
               <label className="label">Party / Customer <span className="text-red-500">*</span></label>
-              <select className="select" value={form.customer} onChange={e => { const cid = e.target.value; const t = tolsFor(cid); setForm(f => ({ ...f, customer: cid, line_items: f.line_items.map(li => ({ ...li, ...t })) })); }} required>
-                <option value="">— Select Party —</option>
-                {customers?.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
-              </select>
+              <SearchableSelect
+                options={(customers || []).map(c => ({ value: c._id, label: c.name }))}
+                value={form.customer}
+                placeholder="— Search & select party —"
+                onChange={cid => { const t = tolsFor(cid); setForm(f => ({ ...f, customer: cid, line_items: f.line_items.map(li => ({ ...li, ...t })) })); }}
+              />
             </div>
             <div>
               <label className="label">Priority</label>

@@ -29,6 +29,7 @@ const emptyForm = {
   hardness: 'soft', grade: 'grade_1', rust_level: 'prime', format_preset: 'custom',
   quantity: 1, supplier: '',
   purchase_date: new Date().toISOString().slice(0, 10), notes: '',
+  weight_kg: null, weight_manual: false,
 };
 
 function calcSheetWeight(l, w, t) {
@@ -68,7 +69,9 @@ export default function InventorySheets() {
   const openAdd = () => { setEditing(null); setForm(emptyForm); setShowModal(true); };
   const openEdit = (sheet) => {
     setEditing(sheet._id);
-    setForm({ ...sheet, supplier: sheet.supplier?._id || sheet.supplier || '', purchase_date: sheet.purchase_date?.slice(0, 10) || '' });
+    const auto = calcSheetWeight(sheet.length_mm, sheet.width_mm, sheet.thickness_mm) * (sheet.quantity || 1);
+    const manual = sheet.weight_kg && Math.abs(sheet.weight_kg - auto) > 0.01;
+    setForm({ ...sheet, supplier: sheet.supplier?._id || sheet.supplier || '', purchase_date: sheet.purchase_date?.slice(0, 10) || '', weight_manual: !!manual });
     setShowModal(true);
   };
 
@@ -78,15 +81,18 @@ export default function InventorySheets() {
     else setForm(f => ({ ...f, format_preset: 'custom' }));
   };
 
+  const wpSheet = calcSheetWeight(form.length_mm, form.width_mm, form.thickness_mm);
+  const computedTotal = wpSheet * (form.quantity || 1);
+  const effectiveTotal = form.weight_manual ? (Number(form.weight_kg) || 0) : computedTotal;
+  const effectivePer = (form.quantity || 1) > 0 ? effectiveTotal / (form.quantity || 1) : effectiveTotal;
+
   const handleSubmit = e => {
     e.preventDefault();
-    const data = { ...form };
+    const data = { ...form, weight_kg: effectiveTotal };
     if (!data.supplier) delete data.supplier;
     if (editing) updateMut.mutate({ id: editing, data });
     else createMut.mutate(data);
   };
-
-  const wpSheet = calcSheetWeight(form.length_mm, form.width_mm, form.thickness_mm);
 
   return (
     <div>
@@ -254,13 +260,19 @@ export default function InventorySheets() {
               <input type="date" className="input" value={form.purchase_date} onChange={e => setForm(f => ({ ...f, purchase_date: e.target.value }))} />
             </div>
           </div>
-          {form.length_mm && form.width_mm && form.thickness_mm && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
-              <div className="text-blue-700 font-medium">
-                Per sheet: <strong>{displayWeight(wpSheet)}</strong> | Total ({form.quantity}): <strong>{displayWeight(wpSheet * form.quantity)}</strong>
-              </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <label className="label text-blue-800 mb-1">Total Weight (kg) — कुल वज़न</label>
+            <div className="flex items-center gap-2">
+              <input type="number" step="0.001" min="0" className="input flex-1"
+                value={effectiveTotal ? Number(effectiveTotal).toFixed(3) : ''}
+                onChange={e => setForm(f => ({ ...f, weight_kg: e.target.value === '' ? null : parseFloat(e.target.value), weight_manual: true }))}
+                placeholder="auto from dimensions" />
+              {form.weight_manual
+                ? <button type="button" onClick={() => setForm(f => ({ ...f, weight_manual: false, weight_kg: null }))} className="btn-secondary text-xs whitespace-nowrap">↺ Auto</button>
+                : <span className="text-xs text-blue-500 whitespace-nowrap">auto</span>}
             </div>
-          )}
+            <div className="text-blue-500 text-xs mt-1">Per sheet {displayWeight(effectivePer)} × {form.quantity || 1}{form.weight_manual ? ' · ✏️ manual override' : ' — type to override'}</div>
+          </div>
           <div>
             <label className="label">Notes</label>
             <textarea className="input" rows={2} value={form.notes || ''} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />

@@ -54,8 +54,9 @@ router.get('/', async (req, res) => {
 router.post('/coils', async (req, res) => {
   try {
     const data = req.body;
-    const weight = calcCoilWeight(data);
-    data.weight_kg = parseFloat(weight.toFixed(3));
+    const computed = parseFloat(calcCoilWeight(data).toFixed(3));
+    // Use a manual weight if one was entered, else the theoretical weight.
+    data.weight_kg = (data.weight_kg && Number(data.weight_kg) > 0) ? parseFloat(Number(data.weight_kg).toFixed(3)) : computed;
     if (data.remaining_weight_kg === undefined) data.remaining_weight_kg = data.weight_kg;
     data.movements = [{ type: 'purchase', weight_kg: data.weight_kg, notes: 'Initial purchase' }];
     const coil = await Coil.create(data);
@@ -68,9 +69,16 @@ router.post('/coils', async (req, res) => {
 router.post('/sheets', async (req, res) => {
   try {
     const data = req.body;
-    const wpSheet = calcSheetWeight(data);
-    data.weight_per_sheet_kg = parseFloat(wpSheet.toFixed(3));
-    data.weight_kg = parseFloat((wpSheet * (data.quantity || 1)).toFixed(3));
+    const qty = data.quantity || 1;
+    const computedPer = parseFloat(calcSheetWeight(data).toFixed(3));
+    if (data.weight_kg && Number(data.weight_kg) > 0) {
+      // manual override on the total weight; derive per-sheet
+      data.weight_kg = parseFloat(Number(data.weight_kg).toFixed(3));
+      data.weight_per_sheet_kg = parseFloat((data.weight_kg / qty).toFixed(3));
+    } else {
+      data.weight_per_sheet_kg = computedPer;
+      data.weight_kg = parseFloat((computedPer * qty).toFixed(3));
+    }
     if (data.remaining_weight_kg === undefined) data.remaining_weight_kg = data.weight_kg;
     data.movements = [{ type: 'purchase', weight_kg: data.weight_kg, notes: 'Initial purchase' }];
     const sheet = await Sheet.create(data);
@@ -100,8 +108,16 @@ router.get('/sheets/:id', async (req, res) => {
 // PUT /api/inventory/coils/:id
 router.put('/coils/:id', async (req, res) => {
   try {
-    const coil = await Coil.findByIdAndUpdate(req.params.id, req.body, { new: true }).populate('supplier', 'name');
-    if (!coil) return res.status(404).json({ message: 'Not found' });
+    const before = await Coil.findById(req.params.id).select('weight_kg remaining_weight_kg');
+    if (!before) return res.status(404).json({ message: 'Not found' });
+    const coil = await Coil.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const computed = parseFloat(calcCoilWeight(coil).toFixed(3));
+    const newTotal = (req.body.weight_kg && Number(req.body.weight_kg) > 0) ? parseFloat(Number(req.body.weight_kg).toFixed(3)) : computed;
+    const used = Math.max(0, before.weight_kg - before.remaining_weight_kg);
+    coil.weight_kg = newTotal;
+    coil.remaining_weight_kg = parseFloat(Math.max(0, newTotal - used).toFixed(3));
+    await coil.save();
+    await coil.populate('supplier', 'name');
     res.json(coil);
   } catch (err) { res.status(400).json({ message: err.message }); }
 });
@@ -109,8 +125,25 @@ router.put('/coils/:id', async (req, res) => {
 // PUT /api/inventory/sheets/:id
 router.put('/sheets/:id', async (req, res) => {
   try {
-    const sheet = await Sheet.findByIdAndUpdate(req.params.id, req.body, { new: true }).populate('supplier', 'name');
-    if (!sheet) return res.status(404).json({ message: 'Not found' });
+    const before = await Sheet.findById(req.params.id).select('weight_kg remaining_weight_kg');
+    if (!before) return res.status(404).json({ message: 'Not found' });
+    const sheet = await Sheet.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const qty = sheet.quantity || 1;
+    const computedPer = parseFloat(calcSheetWeight(sheet).toFixed(3));
+    let newTotal, newPer;
+    if (req.body.weight_kg && Number(req.body.weight_kg) > 0) {
+      newTotal = parseFloat(Number(req.body.weight_kg).toFixed(3));
+      newPer = parseFloat((newTotal / qty).toFixed(3));
+    } else {
+      newPer = computedPer;
+      newTotal = parseFloat((computedPer * qty).toFixed(3));
+    }
+    const used = Math.max(0, before.weight_kg - before.remaining_weight_kg);
+    sheet.weight_per_sheet_kg = newPer;
+    sheet.weight_kg = newTotal;
+    sheet.remaining_weight_kg = parseFloat(Math.max(0, newTotal - used).toFixed(3));
+    await sheet.save();
+    await sheet.populate('supplier', 'name');
     res.json(sheet);
   } catch (err) { res.status(400).json({ message: err.message }); }
 });

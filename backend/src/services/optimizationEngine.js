@@ -157,10 +157,11 @@ async function optimizeToCoils(lineItem, allMachines, pendingOrders, customers, 
 async function optimizeToSheets(lineItem, allMachines, pendingOrders, customers, settings, top_n = 5) {
   const { width_mm: reqW, length_mm: reqL, thickness_mm, hardness, qty_kg,
     width_tolerance_mm = 2, length_tolerance_mm = 0.5, gauge_tolerance_mm = 0.1,
-    gauge_tol_dir = 'minus', width_tol_dir = 'both' } = lineItem;
+    gauge_tol_dir = 'minus', width_tol_dir = 'both', length_tol_dir = 'both' } = lineItem;
   const cutoff = settings?.min_reusable_coil_width_mm ?? 25;
   const gr = tolRange(thickness_mm, gauge_tolerance_mm, gauge_tol_dir);
   const wr = tolRange(reqW, width_tolerance_mm, width_tol_dir);
+  const lr = tolRange(reqL, length_tolerance_mm, length_tol_dir);
   const options = [];
 
   // --- From existing sheets: width must already match; shear to length ---
@@ -170,12 +171,16 @@ async function optimizeToSheets(lineItem, allMachines, pendingOrders, customers,
   }).populate('supplier', 'name');
 
   for (const sheet of sheets) {
-    if (sheet.width_mm < wr.min || sheet.width_mm > wr.max) continue; // can't re-slit a sheet's width
-    const nLen = Math.floor((sheet.length_mm + length_tolerance_mm) / reqL);
-    if (nLen < 1) continue;
-    const leftoverLen = Math.max(0, sheet.length_mm - nLen * reqL);
-    const wastagePct = (leftoverLen / sheet.length_mm) * 100;
-    const wastageKg = (sheet.weight_per_sheet_kg || 0) * (leftoverLen / sheet.length_mm);
+    // A shear trims a larger sheet down in BOTH width and length, so any sheet at least
+    // as big as the order (correct thickness) qualifies; the trimmed area is the wastage.
+    if (sheet.width_mm < wr.min || sheet.length_mm < lr.min) continue;
+    const n_w = Math.max(1, Math.floor(sheet.width_mm / reqW));
+    const n_l = Math.max(1, Math.floor(sheet.length_mm / reqL));
+    const pieces = n_w * n_l;
+    const usedArea = (n_w * reqW) * (n_l * reqL);
+    const totalArea = sheet.width_mm * sheet.length_mm;
+    const wastagePct = totalArea > 0 ? Math.max(0, (totalArea - usedArea) / totalArea * 100) : 0;
+    const wastageKg = (sheet.weight_per_sheet_kg || 0) * (wastagePct / 100);
     const shears = capableLengthCutters(allMachines, sheet.width_mm, sheet.thickness_mm, hardness, ['shear']);
     if (shears.length === 0) continue;
     const tons = Math.min(qty_kg, sheet.remaining_weight_kg) / 1000;
@@ -184,12 +189,12 @@ async function optimizeToSheets(lineItem, allMachines, pendingOrders, customers,
       sheet_id: sheet._id,
       sheet_info: { length_mm: sheet.length_mm, width_mm: sheet.width_mm, thickness_mm: sheet.thickness_mm, hardness: sheet.hardness, format_preset: sheet.format_preset, remaining_weight_kg: sheet.remaining_weight_kg, supplier: sheet.supplier?.name, rust_level: sheet.rust_level },
       cut_width_mm: reqW, cut_length_mm: reqL,
-      pieces_per_sheet: nLen,
+      pieces_per_sheet: pieces,
       needs_slit: false, slit_step: null,
-      wastage_pct: r2(Math.max(0, wastagePct)), wastage_kg: r3(wastageKg), scrap_kg: r3(wastageKg),
+      wastage_pct: r2(wastagePct), wastage_kg: r3(wastageKg), scrap_kg: r3(wastageKg),
       machines: shears.map(m => ({ machine_id: m._id, machine_name: m.name, machine_type: m.type, estimated_time_hrs: lengthCutTime(m, sheet.thickness_mm, tons) })),
       offcut_reuse: [],
-      score: Math.max(0, wastagePct),
+      score: wastagePct,
     });
   }
 

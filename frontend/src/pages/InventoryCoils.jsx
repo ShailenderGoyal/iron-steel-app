@@ -33,6 +33,7 @@ const emptyForm = {
   od_mm: null, id_mm: null, width_mm: null, gauge_mm: null,
   hardness: 'soft', grade: 'grade_1', rust_level: 'prime',
   supplier: '', purchase_date: new Date().toISOString().slice(0, 10), notes: '',
+  weight_kg: null, weight_manual: false,
 };
 
 export default function InventoryCoils() {
@@ -70,19 +71,22 @@ export default function InventoryCoils() {
   const openAdd = () => { setEditing(null); setForm(emptyForm); setShowModal(true); };
   const openEdit = (coil) => {
     setEditing(coil._id);
-    setForm({ ...coil, supplier: coil.supplier?._id || coil.supplier || '', purchase_date: coil.purchase_date?.slice(0, 10) || '' });
+    const auto = calcCoilWeight(coil.od_mm, coil.id_mm, coil.width_mm);
+    const manual = coil.weight_kg && Math.abs(coil.weight_kg - auto) > 0.01;
+    setForm({ ...coil, supplier: coil.supplier?._id || coil.supplier || '', purchase_date: coil.purchase_date?.slice(0, 10) || '', weight_manual: !!manual });
     setShowModal(true);
   };
 
+  const estimatedWeight = calcCoilWeight(form.od_mm, form.id_mm, form.width_mm);
+  const effectiveWeight = form.weight_manual ? (Number(form.weight_kg) || 0) : estimatedWeight;
+
   const handleSubmit = e => {
     e.preventDefault();
-    const data = { ...form };
+    const data = { ...form, weight_kg: effectiveWeight };
     if (!data.supplier) delete data.supplier;
     if (editing) updateMut.mutate({ id: editing, data });
     else createMut.mutate(data);
   };
-
-  const estimatedWeight = calcCoilWeight(form.od_mm, form.id_mm, form.width_mm);
 
   return (
     <div>
@@ -250,12 +254,19 @@ export default function InventoryCoils() {
               <input type="date" className="input" value={form.purchase_date} onChange={e => setForm(f => ({ ...f, purchase_date: e.target.value }))} />
             </div>
           </div>
-          {form.od_mm && form.id_mm && form.width_mm && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
-              <div className="text-blue-700 font-medium">Auto-calculated Weight: <strong>{displayWeight(estimatedWeight)}</strong></div>
-              <div className="text-blue-500 text-xs mt-1">(π/4) × (OD² − ID²) × Width × 0.00786</div>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <label className="label text-blue-800 mb-1">Weight (kg) — वज़न</label>
+            <div className="flex items-center gap-2">
+              <input type="number" step="0.001" min="0" className="input flex-1"
+                value={effectiveWeight ? Number(effectiveWeight).toFixed(3) : ''}
+                onChange={e => setForm(f => ({ ...f, weight_kg: e.target.value === '' ? null : parseFloat(e.target.value), weight_manual: true }))}
+                placeholder="auto from dimensions" />
+              {form.weight_manual
+                ? <button type="button" onClick={() => setForm(f => ({ ...f, weight_manual: false, weight_kg: null }))} className="btn-secondary text-xs whitespace-nowrap">↺ Auto</button>
+                : <span className="text-xs text-blue-500 whitespace-nowrap">auto</span>}
             </div>
-          )}
+            <div className="text-blue-500 text-xs mt-1">{form.weight_manual ? '✏️ manual override' : '(π/4) × (OD² − ID²) × Width × 0.00786 — type to override'}</div>
+          </div>
           <div>
             <label className="label">Notes</label>
             <textarea className="input" rows={2} value={form.notes || ''} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />

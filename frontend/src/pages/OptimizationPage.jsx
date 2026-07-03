@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { ordersAPI, optimizationAPI } from '../services/api';
-import { displayWeight, HARDNESS_LABELS, RUST_LABELS } from '../utils/units';
+import { displayWeight, HARDNESS_LABELS, RUST_LABELS, TOL_DIR_SIGN } from '../utils/units';
 import PageHeader from '../components/PageHeader';
 
 export default function OptimizationPage() {
@@ -113,7 +113,7 @@ export default function OptimizationPage() {
                 <option value="">— Select Item —</option>
                 {orderObj.line_items?.map(li => (
                   <option key={li._id} value={li._id}>
-                    {li.width_mm}mm × {li.thickness_mm}mm | {HARDNESS_LABELS[li.hardness]} | {li.qty_kg}kg
+                    {li.width_mm}mm{li.length_mm ? ` × ${li.length_mm}mm` : ''} × {li.thickness_mm}mm{li.length_mm ? ' [sheet]' : ' [coil]'} | {HARDNESS_LABELS[li.hardness]} | {li.qty_kg}kg
                   </option>
                 ))}
               </select>
@@ -131,12 +131,13 @@ export default function OptimizationPage() {
         </div>
 
         {lineItemObj && (
-          <div className="mt-4 p-4 bg-steel-50 rounded-lg text-sm grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="mt-4 p-4 bg-steel-50 rounded-lg text-sm grid grid-cols-2 lg:grid-cols-6 gap-3">
             <div><div className="text-steel-400 text-xs">Width</div><div className="font-semibold">{lineItemObj.width_mm} mm</div></div>
+            <div><div className="text-steel-400 text-xs">Length</div><div className={`font-semibold ${lineItemObj.length_mm ? '' : 'text-orange-600'}`}>{lineItemObj.length_mm ? `${lineItemObj.length_mm} mm` : '— none → coil'}</div></div>
             <div><div className="text-steel-400 text-xs">Thickness</div><div className="font-semibold">{lineItemObj.thickness_mm} mm</div></div>
             <div><div className="text-steel-400 text-xs">Hardness</div><div className="font-semibold">{HARDNESS_LABELS[lineItemObj.hardness]}</div></div>
             <div><div className="text-steel-400 text-xs">Quantity</div><div className="font-semibold">{displayWeight(lineItemObj.qty_kg)}</div></div>
-            <div><div className="text-steel-400 text-xs">Tolerance ±</div><div className="font-semibold">W:{lineItemObj.width_tolerance_mm}mm G:{lineItemObj.gauge_tolerance_mm}mm</div></div>
+            <div><div className="text-steel-400 text-xs">Tolerance</div><div className="font-semibold">W {TOL_DIR_SIGN[lineItemObj.width_tol_dir || 'both']}{lineItemObj.width_tolerance_mm} · G {TOL_DIR_SIGN[lineItemObj.gauge_tol_dir || 'minus']}{lineItemObj.gauge_tolerance_mm}</div></div>
           </div>
         )}
 
@@ -168,7 +169,7 @@ export default function OptimizationPage() {
                   ? `Slit coil ${srcInfo.width_mm}mm × ${srcInfo.gauge_mm}mm → ${opt.cut_width_mm}mm strips`
                   : opt.source === 'coil'
                     ? `Coil ${srcInfo.width_mm}mm × ${srcInfo.gauge_mm}mm → sheets ${opt.cut_width_mm}×${opt.cut_length_mm}mm`
-                    : `Sheet ${srcInfo.width_mm}×${srcInfo.length_mm}mm → cut to ${opt.cut_length_mm}mm`;
+                    : `Sheet ${srcInfo.width_mm}×${srcInfo.length_mm}mm → ${opt.cut_width_mm}×${opt.cut_length_mm}mm pieces`;
 
                 return (
                   <div
