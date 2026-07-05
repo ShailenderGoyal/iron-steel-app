@@ -16,6 +16,7 @@ const cuttingJobSchema = new mongoose.Schema({
   inventory_item_id: { type: mongoose.Schema.Types.ObjectId, required: true },
   inventory_type: { type: String, enum: ['coil', 'sheet'], required: true },
   material_weight_used_kg: { type: Number, required: true },
+  restocked_coil_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Coil' }, // leftover strip restocked as a new coil, if any (used to reverse on order cancel)
   cut_pieces: [cutPieceSchema],
   num_cuts: { type: Number, default: 2 },
   wastage_kg: { type: Number, default: 0 },

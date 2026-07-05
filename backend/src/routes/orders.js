@@ -1,5 +1,7 @@
 const express = require('express');
 const Order = require('../models/Order');
+const CuttingJob = require('../models/CuttingJob');
+const { Coil, Sheet } = require('../models/Inventory');
 const { protect, ownerOnly } = require('../middleware/auth');
 const router = express.Router();
 
@@ -102,10 +104,52 @@ router.post('/:id/shipments', ownerOnly, async (req, res) => {
   } catch (err) { res.status(400).json({ message: err.message }); }
 });
 
+// Deleting (cancelling) an order also RETURNS any stock that cutting-optimization deducted for it,
+// so a cancelled order never silently loses inventory.
 router.delete('/:id', ownerOnly, async (req, res) => {
   try {
-    await Order.findByIdAndDelete(req.params.id);
-    res.json({ message: 'Order deleted' });
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ message: 'Not found' });
+
+    const jobs = await CuttingJob.find({ order: order._id, status: { $ne: 'cancelled' } });
+    let restoredCount = 0;
+    for (const job of jobs) {
+      let restore = job.material_weight_used_kg || 0;
+
+      // If a leftover strip was restocked as a new coil, undo it too so the leftover isn't counted twice.
+      if (job.restocked_coil_id) {
+        const lc = await Coil.findById(job.restocked_coil_id);
+        if (lc) {
+          const untouched = Math.abs((lc.remaining_weight_kg ?? 0) - (lc.weight_kg ?? 0)) < 0.001;
+          if (untouched) {
+            await Coil.findByIdAndDelete(lc._id); // full amount goes back to the source item
+          } else {
+            // Leftover already partly used elsewhere — keep it, and only return the order's own portion.
+            restore = Math.max(0, restore - (lc.weight_kg || 0));
+          }
+        }
+      }
+
+      const Model = job.inventory_type === 'coil' ? Coil : Sheet;
+      const item = await Model.findById(job.inventory_item_id);
+      if (item && restore > 0) {
+        const restored = Math.min(item.weight_kg, (item.remaining_weight_kg || 0) + restore);
+        item.remaining_weight_kg = parseFloat(restored.toFixed(3));
+        item.movements.push({
+          type: 'adjustment',
+          weight_kg: parseFloat(restore.toFixed(3)),
+          reference: order.order_number,
+          notes: `Returned to stock — order ${order.order_number} cancelled (job ${job.job_number})`,
+        });
+        await item.save();
+        restoredCount++;
+      }
+    }
+
+    await CuttingJob.deleteMany({ order: order._id });
+    await Order.findByIdAndDelete(order._id);
+
+    res.json({ message: 'Order deleted and stock restored', restored_items: restoredCount });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 

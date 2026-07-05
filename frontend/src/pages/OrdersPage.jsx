@@ -40,7 +40,7 @@ export default function OrdersPage() {
   const createMut = useMutation({ mutationFn: ordersAPI.create, onSuccess: () => { qc.invalidateQueries({ queryKey: ['orders'] }); toast.success('Order created'); setShowModal(false); }, onError: e => toast.error(e.response?.data?.message || 'Error') });
   const updateMut = useMutation({ mutationFn: ({ id, data }) => ordersAPI.update(id, data), onSuccess: () => { qc.invalidateQueries({ queryKey: ['orders'] }); toast.success('Updated'); setShowModal(false); }, onError: e => toast.error(e.response?.data?.message || 'Error') });
   const statusMut = useMutation({ mutationFn: ({ id, status }) => ordersAPI.updateStatus(id, status), onSuccess: () => { qc.invalidateQueries({ queryKey: ['orders'] }); toast.success('Status updated'); }, onError: e => toast.error(e.response?.data?.message || 'Error') });
-  const deleteMut = useMutation({ mutationFn: ordersAPI.delete, onSuccess: () => { qc.invalidateQueries({ queryKey: ['orders'] }); toast.success('Deleted'); }, onError: e => toast.error(e.response?.data?.message || 'Error') });
+  const deleteMut = useMutation({ mutationFn: ordersAPI.delete, onSuccess: () => { qc.invalidateQueries({ queryKey: ['orders'] }); qc.invalidateQueries({ queryKey: ['inventory'] }); qc.invalidateQueries({ queryKey: ['inventory-stats'] }); toast.success('Order deleted · stock restored'); }, onError: e => toast.error(e.response?.data?.message || 'Error') });
   const dispatchMut = useMutation({ mutationFn: ({ id, data }) => ordersAPI.addShipment(id, data), onSuccess: () => { qc.invalidateQueries({ queryKey: ['orders'] }); toast.success('Dispatch recorded'); setDispatchOrder(null); setDispatchForm({}); }, onError: e => toast.error(e.response?.data?.message || 'Error') });
 
   const submitDispatch = (e) => {
@@ -160,7 +160,7 @@ export default function OrdersPage() {
                 {isOwner && (
                   <>
                     <button onClick={() => openEdit(order)} className="btn-secondary text-xs">Edit</button>
-                    <button onClick={() => { if (window.confirm('Delete?')) deleteMut.mutate(order._id); }} className="btn-danger text-xs">Del</button>
+                    <button onClick={() => { if (window.confirm(`Delete order ${order.order_number}? Any stock deducted for it by optimization will be returned to inventory.`)) deleteMut.mutate(order._id); }} className="btn-danger text-xs">🗑 Delete</button>
                   </>
                 )}
               </div>

@@ -29,7 +29,8 @@ export function displayMm(value_mm, unit = 'mm', decimals = 2) {
 
 export function displayWeight(kg) {
   if (kg == null) return '—';
-  if (kg >= 1000) return `${(kg / 1000).toFixed(2)} T`;
+  // Tons shown to 3 decimals so precise weights read exactly (e.g. 4.485 T, not 4.49 T).
+  if (kg >= 1000) return `${(kg / 1000).toFixed(3)} T`;
   return `${kg.toFixed(2)} kg`;
 }
 

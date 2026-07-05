@@ -131,6 +131,9 @@ router.post('/confirm', async (req, res) => {
         movements: [{ type: 'adjustment', weight_kg: w, reference: job.job_number, notes: `Leftover restocked from job ${job.job_number}` }],
         notes: `Leftover ${leftover.width_mm}mm strip from cutting job ${job.job_number}`,
       });
+      // Remember the restocked coil so cancelling the order can reverse it (avoids double-counting the leftover).
+      job.restocked_coil_id = restockedCoil._id;
+      await job.save();
     }
 
     // Update order status

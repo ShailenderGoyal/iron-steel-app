@@ -263,9 +263,9 @@ export default function InventorySheets() {
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
             <label className="label text-blue-800 mb-1">Total Weight (kg) — कुल वज़न</label>
             <div className="flex items-center gap-2">
-              <input type="number" step="0.001" min="0" className="input flex-1"
-                value={effectiveTotal ? Number(effectiveTotal).toFixed(3) : ''}
-                onChange={e => setForm(f => ({ ...f, weight_kg: e.target.value === '' ? null : parseFloat(e.target.value), weight_manual: true }))}
+              <input type="text" inputMode="decimal" className="input flex-1"
+                value={form.weight_manual ? (form.weight_kg ?? '') : (computedTotal ? computedTotal.toFixed(3) : '')}
+                onChange={e => { const v = e.target.value; if (v === '' || /^\d*\.?\d*$/.test(v)) setForm(f => ({ ...f, weight_kg: v, weight_manual: true })); }}
                 placeholder="auto from dimensions" />
               {form.weight_manual
                 ? <button type="button" onClick={() => setForm(f => ({ ...f, weight_manual: false, weight_kg: null }))} className="btn-secondary text-xs whitespace-nowrap">↺ Auto</button>
