@@ -1,5 +1,6 @@
 const express = require('express');
 const { Coil, Sheet } = require('../models/Inventory');
+const Settings = require('../models/Settings');
 const { protect } = require('../middleware/auth');
 const router = express.Router();
 
@@ -167,16 +168,35 @@ router.delete('/sheets/:id', async (req, res) => {
 
 router.get('/summary/stats', async (req, res) => {
   try {
-    const coils = await Coil.find({ isActive: true });
-    const sheets = await Sheet.find({ isActive: true });
+    const [coils, sheets, settings] = await Promise.all([
+      Coil.find({ isActive: true }).populate('supplier', 'name'),
+      Sheet.find({ isActive: true }).populate('supplier', 'name'),
+      Settings.findOne({ singleton_key: 'app_settings' }),
+    ]);
     const coilWeight = coils.reduce((s, c) => s + c.remaining_weight_kg, 0);
     const sheetWeight = sheets.reduce((s, sh) => s + sh.remaining_weight_kg, 0);
+
+    // Low-stock: items at or below the configured % of their original weight remaining.
+    const threshold = settings?.low_stock_threshold_pct ?? 20;
+    const asItem = (it, kind, label) => ({
+      _id: it._id, kind, label,
+      remaining_kg: parseFloat((it.remaining_weight_kg || 0).toFixed(1)),
+      remaining_pct: it.weight_kg ? Math.round((it.remaining_weight_kg / it.weight_kg) * 100) : 0,
+      supplier: it.supplier?.name || '',
+    });
+    const low_stock = [
+      ...coils.map(c => asItem(c, 'coil', `${c.width_mm}×${c.gauge_mm}mm coil`)),
+      ...sheets.map(s => asItem(s, 'sheet', `${s.length_mm}×${s.width_mm}×${s.thickness_mm}mm sheet`)),
+    ].filter(x => x.remaining_pct <= threshold).sort((a, b) => a.remaining_pct - b.remaining_pct);
+
     res.json({
       coil_count: coils.length,
       sheet_count: sheets.length,
       total_coil_kg: parseFloat(coilWeight.toFixed(2)),
       total_sheet_kg: parseFloat(sheetWeight.toFixed(2)),
       total_stock_kg: parseFloat((coilWeight + sheetWeight).toFixed(2)),
+      low_stock_threshold_pct: threshold,
+      low_stock,
     });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });

@@ -43,6 +43,26 @@ export default function Dashboard() {
         <StatCard title="Sheet Stock" value={stats ? displayWeight(stats.total_sheet_kg) : '—'} subtitle={`${stats?.sheet_count || 0} sheets`} icon="📄" color="bg-green-50 text-green-700" />
       </div>
 
+      {/* Low-stock alert (जंग कम स्टॉक) */}
+      {stats?.low_stock?.length > 0 && (
+        <div className="card mb-5 border-l-4 border-amber-400 bg-amber-50">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-semibold text-amber-800">⚠️ Low Stock — {stats.low_stock.length} item{stats.low_stock.length > 1 ? 's' : ''} at or below {stats.low_stock_threshold_pct}%</h2>
+            <a href="/inventory/coils" className="text-amber-700 text-sm hover:underline">Inventory →</a>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {stats.low_stock.slice(0, 12).map(item => (
+              <span key={item._id} className="inline-flex items-center gap-1 bg-white border border-amber-200 rounded-lg px-2 py-1 text-xs">
+                <span>{item.kind === 'coil' ? '🔩' : '📄'}</span>
+                <span className="font-medium">{item.label}</span>
+                <span className="text-amber-700 font-semibold">{item.remaining_pct}%</span>
+                <span className="text-steel-400">({displayWeight(item.remaining_kg)})</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Pending Orders */}
         <div className="card">

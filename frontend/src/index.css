@@ -41,6 +41,7 @@
   .badge-ready { @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800; }
   .badge-dispatched { @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-steel-100 text-steel-600; }
   .badge-partially_dispatched { @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-700; }
+  .badge-cancelled { @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700; }
   .badge-high { @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700; }
   .badge-normal { @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-steel-100 text-steel-600; }
   .badge-active { @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700; }

@@ -10,12 +10,15 @@ const cutPieceSchema = new mongoose.Schema({
 
 const cuttingJobSchema = new mongoose.Schema({
   job_number: { type: String, unique: true },
-  order: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: true },
+  // Manually-logged, after-the-fact production records may not tie to a specific order.
+  order: { type: mongoose.Schema.Types.ObjectId, ref: 'Order' },
   line_item_id: { type: mongoose.Schema.Types.ObjectId },
-  machine: { type: mongoose.Schema.Types.ObjectId, ref: 'Machine', required: true },
-  inventory_item_id: { type: mongoose.Schema.Types.ObjectId, required: true },
-  inventory_type: { type: String, enum: ['coil', 'sheet'], required: true },
-  material_weight_used_kg: { type: Number, required: true },
+  // Machine / inventory are optional so a job can be logged even when the piece used isn't tracked.
+  machine: { type: mongoose.Schema.Types.ObjectId, ref: 'Machine' },
+  inventory_item_id: { type: mongoose.Schema.Types.ObjectId },
+  inventory_type: { type: String, enum: ['coil', 'sheet'] },
+  material_weight_used_kg: { type: Number, default: 0 },
+  output_kg: { type: Number, default: 0 }, // good product this job yields for the order (credited to the line item when completed)
   restocked_coil_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Coil' }, // leftover strip restocked as a new coil, if any (used to reverse on order cancel)
   cut_pieces: [cutPieceSchema],
   num_cuts: { type: Number, default: 2 },
@@ -23,6 +26,9 @@ const cuttingJobSchema = new mongoose.Schema({
   wastage_pct: { type: Number, default: 0 },
   scrap_kg: { type: Number, default: 0 },
   estimated_time_hrs: { type: Number },
+  actual_start: { type: Date },   // set by the "Start" button or manual entry — real time work began
+  actual_end: { type: Date },     // set by the "End" button or manual entry — real time work finished
+  manual_entry: { type: Boolean, default: false }, // logged by hand after the fact vs created by the optimizer
   status: { type: String, enum: ['planned', 'in_progress', 'completed', 'cancelled'], default: 'planned' },
   scheduled_date: { type: Date },
   completed_date: { type: Date },

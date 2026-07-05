@@ -9,7 +9,7 @@ import Modal from '../components/Modal';
 import SearchableSelect from '../components/SearchableSelect';
 
 const HARDNESS_LIST = ['soft', 'semi_soft', 'medium', 'medium_hard', 'hard'];
-const STATUS_LIST = ['pending', 'in_production', 'ready', 'partially_dispatched', 'dispatched'];
+const STATUS_LIST = ['pending', 'in_production', 'ready', 'partially_dispatched', 'dispatched', 'cancelled'];
 const MANUAL_STATUS = ['pending', 'in_production', 'ready']; // dispatch statuses are set via the shipment flow, not this dropdown
 
 const emptyLineItem = {
@@ -41,6 +41,7 @@ export default function OrdersPage() {
   const updateMut = useMutation({ mutationFn: ({ id, data }) => ordersAPI.update(id, data), onSuccess: () => { qc.invalidateQueries({ queryKey: ['orders'] }); toast.success('Updated'); setShowModal(false); }, onError: e => toast.error(e.response?.data?.message || 'Error') });
   const statusMut = useMutation({ mutationFn: ({ id, status }) => ordersAPI.updateStatus(id, status), onSuccess: () => { qc.invalidateQueries({ queryKey: ['orders'] }); toast.success('Status updated'); }, onError: e => toast.error(e.response?.data?.message || 'Error') });
   const deleteMut = useMutation({ mutationFn: ordersAPI.delete, onSuccess: () => { qc.invalidateQueries({ queryKey: ['orders'] }); qc.invalidateQueries({ queryKey: ['inventory'] }); qc.invalidateQueries({ queryKey: ['inventory-stats'] }); toast.success('Order deleted · stock restored'); }, onError: e => toast.error(e.response?.data?.message || 'Error') });
+  const cancelMut = useMutation({ mutationFn: ordersAPI.cancel, onSuccess: () => { qc.invalidateQueries({ queryKey: ['orders'] }); qc.invalidateQueries({ queryKey: ['inventory'] }); qc.invalidateQueries({ queryKey: ['inventory-stats'] }); toast.success('Order cancelled · stock restored'); }, onError: e => toast.error(e.response?.data?.message || 'Error') });
   const dispatchMut = useMutation({ mutationFn: ({ id, data }) => ordersAPI.addShipment(id, data), onSuccess: () => { qc.invalidateQueries({ queryKey: ['orders'] }); toast.success('Dispatch recorded'); setDispatchOrder(null); setDispatchForm({}); }, onError: e => toast.error(e.response?.data?.message || 'Error') });
 
   const submitDispatch = (e) => {
@@ -49,6 +50,13 @@ export default function OrdersPage() {
       .map(li => ({ line_item_id: li._id, qty_kg: parseFloat(dispatchForm[li._id]) }))
       .filter(it => it.qty_kg > 0);
     if (!items.length) { toast.error('Enter a quantity to dispatch'); return; }
+    // Warn (but allow) when shipping more than has actually been produced for a size.
+    const overProduced = items.some(it => {
+      const li = dispatchOrder.line_items.find(l => l._id === it.line_item_id);
+      const producedRemaining = (li?.fulfilled_kg || 0) - (li?.dispatched_kg || 0);
+      return it.qty_kg > producedRemaining + 0.001;
+    });
+    if (overProduced && !window.confirm('You are dispatching more than has been produced (marked complete) for one or more sizes. Dispatch anyway?')) return;
     dispatchMut.mutate({ id: dispatchOrder._id, data: { items, vehicle: dispatchForm._vehicle, notes: dispatchForm._notes } });
   };
 
@@ -128,6 +136,7 @@ export default function OrdersPage() {
                       <span className="font-medium">{li.width_mm}mm</span>
                       {li.length_mm && <span>×{li.length_mm}mm</span>}
                       <span> | {li.thickness_mm}mm | {HARDNESS_LABELS[li.hardness]} | {displayWeight(li.qty_kg)}</span>
+                      {li.fulfilled_kg > 0 && <span className="text-blue-600 font-medium"> · ✅{displayWeight(li.fulfilled_kg)} made</span>}
                       {li.dispatched_kg > 0 && <span className="text-green-600 font-medium"> · 📦{displayWeight(li.dispatched_kg)}</span>}
                     </div>
                   ))}
@@ -148,19 +157,31 @@ export default function OrdersPage() {
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
-                {MANUAL_STATUS.includes(order.status) && (
-                  <select className="select text-xs w-44" value={order.status} onChange={e => statusMut.mutate({ id: order._id, status: e.target.value })}>
-                    {MANUAL_STATUS.map(s => <option key={s} value={s}>{ORDER_STATUS_LABELS[s] || s}</option>)}
-                  </select>
-                )}
-                <a href="/optimization" className="btn-primary text-xs">⚡ Optimize</a>
-                {isOwner && order.status !== 'dispatched' && (
-                  <button onClick={() => { setDispatchOrder(order); setDispatchForm({}); }} className="btn-success text-xs">📦 Dispatch</button>
-                )}
-                {isOwner && (
+                {order.status === 'cancelled' ? (
                   <>
-                    <button onClick={() => openEdit(order)} className="btn-secondary text-xs">Edit</button>
-                    <button onClick={() => { if (window.confirm(`Delete order ${order.order_number}? Any stock deducted for it by optimization will be returned to inventory.`)) deleteMut.mutate(order._id); }} className="btn-danger text-xs">🗑 Delete</button>
+                    <span className="text-xs text-steel-400">Cancelled · stock restored</span>
+                    {isOwner && (
+                      <button onClick={() => { if (window.confirm(`Permanently delete cancelled order ${order.order_number}? This removes the record.`)) deleteMut.mutate(order._id); }} className="btn-danger text-xs">🗑 Delete</button>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {MANUAL_STATUS.includes(order.status) && (
+                      <select className="select text-xs w-44" value={order.status} onChange={e => statusMut.mutate({ id: order._id, status: e.target.value })}>
+                        {MANUAL_STATUS.map(s => <option key={s} value={s}>{ORDER_STATUS_LABELS[s] || s}</option>)}
+                      </select>
+                    )}
+                    <a href="/optimization" className="btn-primary text-xs">⚡ Optimize</a>
+                    {isOwner && order.status !== 'dispatched' && (
+                      <button onClick={() => { setDispatchOrder(order); setDispatchForm({}); }} className="btn-success text-xs">📦 Dispatch</button>
+                    )}
+                    {isOwner && (
+                      <>
+                        <button onClick={() => openEdit(order)} className="btn-secondary text-xs">Edit</button>
+                        <button onClick={() => { if (window.confirm(`Cancel order ${order.order_number}? Its stock will be returned to inventory and the order kept as a cancelled record.`)) cancelMut.mutate(order._id); }} className="btn-secondary text-xs">✖ Cancel</button>
+                        <button onClick={() => { if (window.confirm(`Delete order ${order.order_number}? Any stock deducted for it by optimization will be returned to inventory, and the record removed.`)) deleteMut.mutate(order._id); }} className="btn-danger text-xs">🗑 Delete</button>
+                      </>
+                    )}
                   </>
                 )}
               </div>
@@ -274,12 +295,16 @@ export default function OrdersPage() {
               {dispatchOrder.line_items.map((li, i) => {
                 const remaining = li.qty_kg - (li.dispatched_kg || 0);
                 const done = remaining <= 0.001;
+                const produced = li.fulfilled_kg || 0;
+                const entered = parseFloat(dispatchForm[li._id]) || 0;
+                const overProduced = entered > (produced - (li.dispatched_kg || 0)) + 0.001;
                 return (
                   <div key={li._id || i} className="border border-steel-200 rounded-lg p-3">
                     <div className="flex justify-between items-center text-sm gap-2">
                       <span className="font-medium">{li.width_mm}mm{li.length_mm ? `×${li.length_mm}mm` : ''} · {li.thickness_mm}mm · {HARDNESS_LABELS[li.hardness]}</span>
-                      <span className="text-steel-500 text-xs whitespace-nowrap">{displayWeight(li.dispatched_kg || 0)} / {displayWeight(li.qty_kg)}</span>
+                      <span className="text-steel-500 text-xs whitespace-nowrap">📦 {displayWeight(li.dispatched_kg || 0)} / {displayWeight(li.qty_kg)}</span>
                     </div>
+                    <div className="text-xs text-steel-400 mt-0.5">✅ Produced (marked complete): {displayWeight(produced)}</div>
                     <div className="flex items-center gap-2 mt-2">
                       <label className="text-xs text-steel-600 whitespace-nowrap">Dispatch now (kg)</label>
                       <input type="number" step="0.1" min="0" max={remaining}
@@ -288,6 +313,7 @@ export default function OrdersPage() {
                         onChange={e => setDispatchForm(f => ({ ...f, [li._id]: e.target.value }))}
                         disabled={done} />
                       {done && <span className="text-xs text-green-600">✓ done</span>}
+                      {!done && overProduced && <span className="text-xs text-amber-600">⚠ more than produced</span>}
                     </div>
                   </div>
                 );

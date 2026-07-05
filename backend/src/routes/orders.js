@@ -2,6 +2,7 @@ const express = require('express');
 const Order = require('../models/Order');
 const CuttingJob = require('../models/CuttingJob');
 const { restoreJobStock } = require('../services/stockRestore');
+const { applyFulfillmentChange } = require('../services/fulfillment');
 const { protect, ownerOnly } = require('../middleware/auth');
 const router = express.Router();
 
@@ -104,8 +105,33 @@ router.post('/:id/shipments', ownerOnly, async (req, res) => {
   } catch (err) { res.status(400).json({ message: err.message }); }
 });
 
-// Deleting (cancelling) an order also RETURNS any stock that cutting-optimization deducted for it,
-// so a cancelled order never silently loses inventory.
+// Cancel an order but KEEP the record (audit trail): returns any deducted stock and marks
+// its cutting jobs cancelled, then sets the order status to 'cancelled'.
+router.patch('/:id/cancel', ownerOnly, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ message: 'Not found' });
+    if (order.status === 'cancelled') return res.status(400).json({ message: 'Order is already cancelled' });
+
+    const jobs = await CuttingJob.find({ order: order._id, status: { $ne: 'cancelled' } });
+    let restoredCount = 0;
+    for (const job of jobs) {
+      const restored = await restoreJobStock(job, order.order_number, `Returned to stock — order ${order.order_number} cancelled (job ${job.job_number})`);
+      if (restored > 0) restoredCount++;
+      await applyFulfillmentChange(job, job.status, 'cancelled');
+      job.status = 'cancelled';
+      await job.save();
+    }
+
+    order.status = 'cancelled';
+    await order.save();
+    await order.populate('customer', 'name phone');
+    res.json({ order, message: 'Order cancelled and stock restored', restored_items: restoredCount });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// Deleting an order also RETURNS any stock that cutting-optimization deducted for it,
+// so a deleted order never silently loses inventory. (Cancel keeps the record; delete removes it.)
 router.delete('/:id', ownerOnly, async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);

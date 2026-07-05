@@ -7,6 +7,7 @@ const Settings = require('../models/Settings');
 const { Coil, Sheet } = require('../models/Inventory');
 const CuttingJob = require('../models/CuttingJob');
 const { restoreJobStock } = require('../services/stockRestore');
+const { applyFulfillmentChange } = require('../services/fulfillment');
 const { protect } = require('../middleware/auth');
 const router = express.Router();
 
@@ -102,6 +103,10 @@ router.post('/confirm', async (req, res) => {
     });
     await item.save();
 
+    // The good product this job yields for the order = the ordered qty for this size.
+    const orderedLine = order.line_items.id(line_item_id);
+    const outputKg = orderedLine ? orderedLine.qty_kg : 0;
+
     // Create cutting job
     const job = await CuttingJob.create({
       order: order_id,
@@ -110,6 +115,7 @@ router.post('/confirm', async (req, res) => {
       inventory_item_id: inventory_id,
       inventory_type,
       material_weight_used_kg: material_weight_kg,
+      output_kg: outputKg,
       cut_pieces: cut_pieces || [],
       num_cuts: num_cuts || 2,
       wastage_kg: wastage_kg || 0,
@@ -192,6 +198,7 @@ router.patch('/jobs/:id/status', async (req, res) => {
     if (status === 'cancelled' && existing.status !== 'cancelled') {
       await restoreJobStock(existing, existing.job_number, `Returned to stock — cutting job ${existing.job_number} cancelled`);
     }
+    await applyFulfillmentChange(existing, existing.status, status);
 
     const job = await CuttingJob.findByIdAndUpdate(req.params.id, update, { new: true })
       .populate('machine', 'name').populate('order', 'order_number');

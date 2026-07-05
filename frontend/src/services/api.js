@@ -77,6 +77,7 @@ export const ordersAPI = {
   update: (id, data) => api.put(`/orders/${id}`, data),
   updateStatus: (id, status) => api.patch(`/orders/${id}/status`, { status }),
   addShipment: (id, data) => api.post(`/orders/${id}/shipments`, data),
+  cancel: (id) => api.patch(`/orders/${id}/cancel`),
   delete: (id) => api.delete(`/orders/${id}`),
 };
 
@@ -101,6 +102,7 @@ export const productionAPI = {
   getPlan: (date) => api.get('/production/plan', { params: { date } }),
   getJobs: (params) => api.get('/production/jobs', { params }),
   updateJob: (id, data) => api.patch(`/production/jobs/${id}`, data),
+  logJob: (data) => api.post('/production/jobs', data),
 };
 
 // Scrap

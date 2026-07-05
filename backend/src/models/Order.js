@@ -35,7 +35,7 @@ const orderSchema = new mongoose.Schema({
   customer: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', required: true },
   date_created: { type: Date, default: Date.now },
   deadline: { type: Date },
-  status: { type: String, enum: ['pending', 'in_production', 'ready', 'partially_dispatched', 'dispatched'], default: 'pending' },
+  status: { type: String, enum: ['pending', 'in_production', 'ready', 'partially_dispatched', 'dispatched', 'cancelled'], default: 'pending' },
   priority: { type: String, enum: ['high', 'normal'], default: 'normal' },
   line_items: [lineItemSchema],
   shipments: [shipmentSchema],

@@ -70,6 +70,7 @@ export const ORDER_STATUS_LABELS = {
   ready: 'Ready / तैयार',
   dispatched: 'Dispatched / भेजा गया',
   partially_dispatched: 'Partly Dispatched / आंशिक',
+  cancelled: 'Cancelled / रद्द',
 };
 
 export const JOB_STATUS_LABELS = {
