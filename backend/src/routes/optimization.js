@@ -6,6 +6,7 @@ const Customer = require('../models/Customer');
 const Settings = require('../models/Settings');
 const { Coil, Sheet } = require('../models/Inventory');
 const CuttingJob = require('../models/CuttingJob');
+const { restoreJobStock } = require('../services/stockRestore');
 const { protect } = require('../middleware/auth');
 const router = express.Router();
 
@@ -76,6 +77,13 @@ router.post('/confirm', async (req, res) => {
 
     const order = await Order.findById(order_id);
     if (!order) return res.status(404).json({ message: 'Order not found' });
+
+    // Guard against double-planning: a line item may only have one active cutting job at a time,
+    // so an accidental second confirm can't deduct inventory twice.
+    const existingJob = await CuttingJob.findOne({ order: order_id, line_item_id, status: { $ne: 'cancelled' } });
+    if (existingJob) {
+      return res.status(400).json({ message: `This size already has an active cutting job (${existingJob.job_number}). Cancel it first to re-plan.` });
+    }
 
     // Deduct from inventory
     const Model = inventory_type === 'coil' ? Coil : Sheet;
@@ -176,9 +184,17 @@ router.patch('/jobs/:id/status', async (req, res) => {
     const { status, completed_date } = req.body;
     const update = { status };
     if (status === 'completed') update.completed_date = completed_date || new Date();
+
+    const existing = await CuttingJob.findById(req.params.id);
+    if (!existing) return res.status(404).json({ message: 'Job not found' });
+
+    // Cancelling a job returns its consumed material to inventory (once).
+    if (status === 'cancelled' && existing.status !== 'cancelled') {
+      await restoreJobStock(existing, existing.job_number, `Returned to stock — cutting job ${existing.job_number} cancelled`);
+    }
+
     const job = await CuttingJob.findByIdAndUpdate(req.params.id, update, { new: true })
       .populate('machine', 'name').populate('order', 'order_number');
-    if (!job) return res.status(404).json({ message: 'Job not found' });
     res.json(job);
   } catch (err) { res.status(500).json({ message: err.message }); }
 });

@@ -1,6 +1,7 @@
 const express = require('express');
 const { generateDailyPlan } = require('../services/productionPlanner');
 const CuttingJob = require('../models/CuttingJob');
+const { restoreJobStock } = require('../services/stockRestore');
 const { protect } = require('../middleware/auth');
 const router = express.Router();
 
@@ -47,9 +48,17 @@ router.patch('/jobs/:id', async (req, res) => {
     const allowed = ['status', 'completed_date', 'notes', 'scheduled_date'];
     const update = {};
     allowed.forEach(k => { if (req.body[k] !== undefined) update[k] = req.body[k]; });
+
+    const existing = await CuttingJob.findById(req.params.id);
+    if (!existing) return res.status(404).json({ message: 'Not found' });
+
+    // Cancelling a job returns the material it consumed to inventory (once), matching order cancellation.
+    if (update.status === 'cancelled' && existing.status !== 'cancelled') {
+      await restoreJobStock(existing, existing.job_number, `Returned to stock — cutting job ${existing.job_number} cancelled`);
+    }
+
     const job = await CuttingJob.findByIdAndUpdate(req.params.id, update, { new: true })
       .populate('machine', 'name').populate('order', 'order_number');
-    if (!job) return res.status(404).json({ message: 'Not found' });
     res.json(job);
   } catch (err) { res.status(500).json({ message: err.message }); }
 });

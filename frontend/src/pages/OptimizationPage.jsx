@@ -15,10 +15,20 @@ export default function OptimizationPage() {
   const [leftoverChoice, setLeftoverChoice] = useState('restock');
   const [schedDate, setSchedDate] = useState(new Date().toISOString().slice(0, 10));
 
+  // Orders that still need cutting planned: pending, plus in_production (multi-size orders whose
+  // first size is already planned — the rest must still be reachable here).
   const { data: orders } = useQuery({
-    queryKey: ['orders', { status: 'pending' }],
-    queryFn: () => ordersAPI.getAll({ status: 'pending' }).then(r => r.data),
+    queryKey: ['orders', 'optimizable'],
+    queryFn: () => ordersAPI.getAll().then(r => r.data.filter(o => ['pending', 'in_production'].includes(o.status))),
   });
+
+  // Which line items of the selected order already have an active (non-cancelled) cutting job.
+  const { data: orderJobs } = useQuery({
+    queryKey: ['optimization-jobs', selectedOrder],
+    queryFn: () => optimizationAPI.getJobs({ order_id: selectedOrder }).then(r => r.data),
+    enabled: !!selectedOrder,
+  });
+  const plannedLineIds = new Set((orderJobs || []).filter(j => j.status !== 'cancelled').map(j => String(j.line_item_id)));
 
   const orderObj = orders?.find(o => o._id === selectedOrder);
   const lineItemObj = orderObj?.line_items?.find(li => li._id === selectedLineItem);
@@ -35,11 +45,13 @@ export default function OptimizationPage() {
       qc.invalidateQueries({ queryKey: ['orders'] });
       qc.invalidateQueries({ queryKey: ['inventory'] });
       qc.invalidateQueries({ queryKey: ['inventory-stats'] });
+      qc.invalidateQueries({ queryKey: ['optimization-jobs'] });
       const rc = res?.data?.restocked_coil;
       toast.success(rc ? `Job created · ${rc.width_mm}mm coil (${Math.round(rc.weight_kg)}kg) restocked` : 'Cutting job created!');
       setResults(null);
       setSelectedOption(null);
-      setSelectedOrder('');
+      // Keep the order selected so the next size of a multi-size order can be planned right away.
+      setSelectedLineItem('');
     },
     onError: e => toast.error(e.response?.data?.message || 'Error confirming job'),
   });
@@ -111,11 +123,14 @@ export default function OptimizationPage() {
               <label className="label">Line Item</label>
               <select className="select" value={selectedLineItem} onChange={e => { setSelectedLineItem(e.target.value); setResults(null); }}>
                 <option value="">— Select Item —</option>
-                {orderObj.line_items?.map(li => (
-                  <option key={li._id} value={li._id}>
-                    {li.width_mm}mm{li.length_mm ? ` × ${li.length_mm}mm` : ''} × {li.thickness_mm}mm{li.length_mm ? ' [sheet]' : ' [coil]'} | {HARDNESS_LABELS[li.hardness]} | {li.qty_kg}kg
-                  </option>
-                ))}
+                {orderObj.line_items?.map(li => {
+                  const planned = plannedLineIds.has(String(li._id));
+                  return (
+                    <option key={li._id} value={li._id} disabled={planned}>
+                      {li.width_mm}mm{li.length_mm ? ` × ${li.length_mm}mm` : ''} × {li.thickness_mm}mm{li.length_mm ? ' [sheet]' : ' [coil]'} | {HARDNESS_LABELS[li.hardness]} | {li.qty_kg}kg{planned ? ' — ✓ already planned' : ''}
+                    </option>
+                  );
+                })}
               </select>
             </div>
           )}
