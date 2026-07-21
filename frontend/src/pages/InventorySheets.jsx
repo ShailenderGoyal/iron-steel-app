@@ -128,7 +128,7 @@ export default function InventorySheets() {
         actions={
           <div className="flex gap-2 flex-wrap">
             <button onClick={() => exportToCsv(stampedName('sheets'), EXPORT_COLUMNS, inventory || [])} className="btn-secondary">⬇️ Excel</button>
-            <button onClick={() => exportPdf({ title: 'Sheet Inventory (पत्र)', subtitle: `${inventory?.length || 0} sheet types in stock`, columns: EXPORT_COLUMNS, rows: inventory || [], landscape: true })} className="btn-secondary">📄 PDF</button>
+            <button onClick={() => exportPdf({ title: 'Sheet Inventory', subtitle: `${inventory?.length || 0} sheet types in stock`, columns: EXPORT_COLUMNS, rows: inventory || [], landscape: true })} className="btn-secondary">📄 PDF</button>
             <button onClick={openAdd} className="btn-primary">+ Add Sheet</button>
           </div>
         }

@@ -123,7 +123,7 @@ export default function InventoryCoils() {
         actions={
           <div className="flex gap-2 flex-wrap">
             <button onClick={() => exportToCsv(stampedName('coils'), EXPORT_COLUMNS, inventory || [])} className="btn-secondary">⬇️ Excel</button>
-            <button onClick={() => exportPdf({ title: 'Coil Inventory (माल)', subtitle: `${inventory?.length || 0} coils in stock`, columns: EXPORT_COLUMNS, rows: inventory || [], landscape: true })} className="btn-secondary">📄 PDF</button>
+            <button onClick={() => exportPdf({ title: 'Coil Inventory', subtitle: `${inventory?.length || 0} coils in stock`, columns: EXPORT_COLUMNS, rows: inventory || [], landscape: true })} className="btn-secondary">📄 PDF</button>
             <button onClick={openAdd} className="btn-primary">+ Add Coil</button>
           </div>
         }
