@@ -61,9 +61,9 @@ export default function SuppliersPage() {
                 {s.contact && <div className="text-sm text-steel-500">👤 {s.contact}</div>}
                 {s.address && <div className="text-sm text-steel-400 mt-1">{s.address}</div>}
               </div>
-              <div className="flex gap-1">
-                <button onClick={() => { setEditing(s._id); setForm(s); setShowModal(true); }} className="btn-secondary px-2 py-1 text-xs">Edit</button>
-                <button onClick={() => { if (window.confirm('Remove?')) deleteMut.mutate(s._id); }} className="btn-danger px-2 py-1 text-xs">Del</button>
+              <div className="flex gap-1.5">
+                <button onClick={() => { setEditing(s._id); setForm(s); setShowModal(true); }} className="btn-secondary btn-xs">Edit</button>
+                <button onClick={() => { if (window.confirm('Remove?')) deleteMut.mutate(s._id); }} className="btn-danger btn-xs">Del</button>
               </div>
             </div>
           </div>

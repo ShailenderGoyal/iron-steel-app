@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { customersAPI } from '../services/api';
+import { exportPdf } from '../utils/exportPdf';
 import PageHeader from '../components/PageHeader';
 import Modal from '../components/Modal';
 
@@ -120,6 +121,32 @@ export default function CustomersPage() {
     setParams({ type: next.item_type, width: next.width_mm, gauge: next.gauge_mm, length: next.length_mm }, { replace: true });
   };
 
+  const sizeLabel = ({ width_mm, thickness_mm, length_mm }) =>
+    `${width_mm ? `${width_mm}mm` : 'any width'} × ${thickness_mm ? `${thickness_mm}mm` : 'any gauge'}`
+    + (search.item_type === 'sheet' ? ` × ${length_mm ? `${length_mm}mm` : 'any length'}` : '');
+
+  const printResults = () => {
+    const rows = results.flatMap(({ customer: c, matched }) => matched.map(({ size: s, wildcards }) => ({
+      party: c.name,
+      phone: c.phone || '—',
+      size: sizeLabel(s),
+      match: wildcards.length === 0 ? 'Exact' : `Not exact — any ${wildcards.join('/')}`,
+      notes: s.notes || '—',
+    })));
+    exportPdf({
+      title: `${search.item_type === 'coil' ? 'Coil' : 'Sheet'} — ${sizeLabel({ width_mm: search.width_mm, thickness_mm: search.gauge_mm, length_mm: search.length_mm })}`,
+      subtitle: `Parties buying this size — ${results.length} found`,
+      columns: [
+        { label: 'Party', value: r => r.party },
+        { label: 'Phone', value: r => r.phone },
+        { label: 'Matched Size', value: r => r.size },
+        { label: 'Match', value: r => r.match },
+        { label: 'Notes', value: r => r.notes },
+      ],
+      rows,
+    });
+  };
+
   return (
     <div>
       <div className="no-print">
@@ -176,7 +203,7 @@ export default function CustomersPage() {
               </>
             )}
           </div>
-          <div className="text-xs text-steel-400 mt-2">Parties with a blank width/gauge/length accept any value for that dimension — they'll still show up as a match, marked "any".</div>
+          <div className="text-sm text-steel-500 mt-2">Parties with a blank width/gauge/length accept any value for that dimension — they'll still show up as a match, marked "any".</div>
         </div>
       )}
 
@@ -185,9 +212,9 @@ export default function CustomersPage() {
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold">
               {search.item_type === 'coil' ? '🔩' : '📄'} {search.width_mm || '—'}mm × {search.gauge_mm || '—'}mm{search.item_type === 'sheet' ? ` × ${search.length_mm || '—'}mm` : ''} — {search.item_type === 'coil' ? 'Coil' : 'Sheet'}
-              <span className="text-steel-400 font-normal text-sm ml-2">({results.length} part{results.length === 1 ? 'y' : 'ies'})</span>
+              <span className="text-steel-500 font-normal text-sm ml-2">({results.length} part{results.length === 1 ? 'y' : 'ies'})</span>
             </h2>
-            <button onClick={() => window.print()} className="btn-primary text-sm no-print">🖨️ Print This List</button>
+            {results.length > 0 && <button onClick={printResults} className="btn-primary no-print">📄 PDF / Print</button>}
           </div>
           {results.length === 0 ? (
             <div className="text-center text-steel-400 py-6 no-print">No parties found for this size yet.</div>
@@ -218,8 +245,8 @@ export default function CustomersPage() {
                         {matched.map(({ wildcards }, i) => (
                           <div key={i}>
                             {wildcards.length === 0
-                              ? <span className="text-green-600 text-xs font-medium">✓ Exact</span>
-                              : <span className="text-amber-600 text-xs font-medium">⚠ Not exact — any {wildcards.join('/')}</span>}
+                              ? <span className="text-green-700 text-sm font-medium">✓ Exact</span>
+                              : <span className="text-amber-700 text-sm font-medium">⚠ Not exact — any {wildcards.join('/')}</span>}
                           </div>
                         ))}
                       </td>
@@ -244,18 +271,18 @@ export default function CustomersPage() {
                 {c.phone && <div className="text-sm text-steel-500">📞 {c.phone}</div>}
                 {c.contact && <div className="text-sm text-steel-500">👤 {c.contact}</div>}
               </div>
-              <div className="flex gap-1">
-                <button onClick={() => openEdit(c)} className="btn-secondary px-2 py-1 text-xs">Edit</button>
-                <button onClick={() => { if (window.confirm('Remove party?')) deleteMut.mutate(c._id); }} className="btn-danger px-2 py-1 text-xs">Del</button>
+              <div className="flex gap-1.5">
+                <button onClick={() => openEdit(c)} className="btn-secondary btn-xs">Edit</button>
+                <button onClick={() => { if (window.confirm('Remove party?')) deleteMut.mutate(c._id); }} className="btn-danger btn-xs">Del</button>
               </div>
             </div>
 
             {c.preferred_sizes?.length > 0 && (
               <div>
-                <div className="text-xs font-medium text-steel-500 mb-1 uppercase">Sizes Used</div>
-                <div className="flex flex-wrap gap-1">
+                <div className="text-xs font-semibold text-steel-500 mb-1 uppercase tracking-wide">Sizes Used</div>
+                <div className="flex flex-wrap gap-1.5">
                   {c.preferred_sizes.map((s, i) => (
-                    <span key={i} className="bg-steel-100 text-steel-700 text-xs px-2 py-0.5 rounded">
+                    <span key={i} className="bg-steel-100 text-steel-700 text-sm px-2 py-1 rounded-md">
                       {s.item_type === 'sheet' ? '📄' : '🔩'} {s.width_mm ? `${s.width_mm}mm` : 'any width'} × {s.thickness_mm ? `${s.thickness_mm}mm` : 'any gauge'}
                       {s.item_type === 'sheet' && <> × {s.length_mm ? `${s.length_mm}mm` : 'any length'}</>}
                     </span>
@@ -291,43 +318,43 @@ export default function CustomersPage() {
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="label mb-0">Sizes Used (साइज़)</label>
-              <button type="button" onClick={addSize} className="btn-secondary text-xs">+ Add Size</button>
+              <button type="button" onClick={addSize} className="btn-secondary btn-xs">+ Add Size</button>
             </div>
             {form.preferred_sizes.map((s, i) => {
               const isCoil = (s.item_type || 'coil') === 'coil';
               return (
                 <div key={i} className="grid grid-cols-2 sm:grid-cols-6 gap-2 mb-2 p-2 bg-steel-50 rounded-lg">
                   <div>
-                    <label className="text-xs text-steel-500">Type</label>
+                    <label className="text-sm text-steel-600">Type</label>
                     <select className="select" value={s.item_type || 'coil'} onChange={e => updateSize(i, 'item_type', e.target.value)}>
                       <option value="coil">🔩 Coil</option>
                       <option value="sheet">📄 Sheet</option>
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs text-steel-500">Width (mm)</label>
+                    <label className="text-sm text-steel-600">Width (mm)</label>
                     <input type="number" className="input" step="0.1" value={s.width_mm} onChange={e => updateSize(i, 'width_mm', e.target.value)} placeholder="blank = any" />
                   </div>
                   <div>
-                    <label className="text-xs text-steel-500">Gauge/Thickness (mm)</label>
+                    <label className="text-sm text-steel-600">Gauge/Thickness (mm)</label>
                     <input type="number" className="input" step="0.01" value={s.thickness_mm} onChange={e => updateSize(i, 'thickness_mm', e.target.value)} placeholder="blank = any" />
                   </div>
                   <div>
-                    <label className="text-xs text-steel-500">Length (mm){isCoil ? ' — n/a' : ''}</label>
+                    <label className="text-sm text-steel-600">Length (mm){isCoil ? ' — n/a' : ''}</label>
                     <input type="number" className="input" step="0.1" value={s.length_mm} disabled={isCoil}
                       onChange={e => updateSize(i, 'length_mm', e.target.value)} placeholder={isCoil ? 'n/a for coils' : 'blank = any'} />
                   </div>
                   <div>
-                    <label className="text-xs text-steel-500">Notes</label>
+                    <label className="text-sm text-steel-600">Notes</label>
                     <input className="input" value={s.notes || ''} onChange={e => updateSize(i, 'notes', e.target.value)} placeholder="optional" />
                   </div>
                   <div className="flex items-end">
-                    <button type="button" onClick={() => removeSize(i)} className="btn-danger px-3 py-2 text-xs w-full">Remove</button>
+                    <button type="button" onClick={() => removeSize(i)} className="btn-danger btn-xs w-full">Remove</button>
                   </div>
                 </div>
               );
             })}
-            <div className="text-xs text-steel-400">Leave width/gauge/length blank if this party accepts any value for that dimension.</div>
+            <div className="text-sm text-steel-500">Leave width/gauge/length blank if this party accepts any value for that dimension.</div>
           </div>
 
           <div>

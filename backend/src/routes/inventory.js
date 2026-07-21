@@ -71,8 +71,12 @@ router.post('/coils', async (req, res) => {
   try {
     const data = req.body;
     const computed = parseFloat(calcCoilWeight(data).toFixed(3));
-    // Use a manual weight if one was entered, else the theoretical weight.
-    data.weight_kg = (data.weight_kg && Number(data.weight_kg) > 0) ? parseFloat(Number(data.weight_kg).toFixed(3)) : computed;
+    const manualWeight = data.weight_kg && Number(data.weight_kg) > 0;
+    // Use a manual weight if one was entered, else the theoretical weight from OD/ID/width.
+    if (!manualWeight && !(computed > 0)) {
+      return res.status(400).json({ message: 'Enter a weight, or provide OD + ID to calculate it automatically.' });
+    }
+    data.weight_kg = manualWeight ? parseFloat(Number(data.weight_kg).toFixed(3)) : computed;
     if (data.remaining_weight_kg === undefined) data.remaining_weight_kg = data.weight_kg;
     data.movements = [{ type: 'purchase', weight_kg: data.weight_kg, notes: 'Initial purchase', by: req.user._id }];
     const coil = await Coil.create(data);
@@ -130,7 +134,11 @@ router.put('/coils/:id', async (req, res) => {
 
     const coil = await Coil.findByIdAndUpdate(req.params.id, req.body, { new: true });
     const computed = parseFloat(calcCoilWeight(coil).toFixed(3));
-    const newTotal = (req.body.weight_kg && Number(req.body.weight_kg) > 0) ? parseFloat(Number(req.body.weight_kg).toFixed(3)) : computed;
+    const manualWeight = req.body.weight_kg && Number(req.body.weight_kg) > 0;
+    if (!manualWeight && !(computed > 0)) {
+      return res.status(400).json({ message: 'Enter a weight, or provide OD + ID to calculate it automatically.' });
+    }
+    const newTotal = manualWeight ? parseFloat(Number(req.body.weight_kg).toFixed(3)) : computed;
     const used = Math.max(0, beforeSnapshot.weight_kg - beforeSnapshot.remaining_weight_kg);
     coil.weight_kg = newTotal;
     coil.remaining_weight_kg = parseFloat(Math.max(0, newTotal - used).toFixed(3));

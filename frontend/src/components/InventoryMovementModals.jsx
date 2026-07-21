@@ -45,8 +45,8 @@ export function MoveModal({ item, kind, onClose }) {
       <form onSubmit={submit} className="space-y-4">
         <div className="text-sm text-steel-500">Currently {displayWeight(item.remaining_weight_kg)} in stock.</div>
         <div className="flex gap-2">
-          <button type="button" onClick={() => setDirection('in')} className={`flex-1 py-2 rounded-lg text-sm font-medium border-2 ${direction === 'in' ? 'border-green-500 bg-green-50 text-green-700' : 'border-steel-200 text-steel-500'}`}>↩️ Move In</button>
-          <button type="button" onClick={() => setDirection('out')} className={`flex-1 py-2 rounded-lg text-sm font-medium border-2 ${direction === 'out' ? 'border-red-500 bg-red-50 text-red-700' : 'border-steel-200 text-steel-500'}`}>↪️ Move Out</button>
+          <button type="button" onClick={() => setDirection('in')} className={`flex-1 py-3 rounded-lg text-base font-medium border-2 ${direction === 'in' ? 'border-green-500 bg-green-50 text-green-700' : 'border-steel-200 text-steel-600'}`}>↩️ Move In</button>
+          <button type="button" onClick={() => setDirection('out')} className={`flex-1 py-3 rounded-lg text-base font-medium border-2 ${direction === 'out' ? 'border-red-500 bg-red-50 text-red-700' : 'border-steel-200 text-steel-600'}`}>↪️ Move Out</button>
         </div>
         <div>
           <label className="label">Weight (kg)</label>

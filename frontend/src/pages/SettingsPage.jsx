@@ -115,7 +115,7 @@ export default function SettingsPage() {
         <div className="card mt-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-lg">User Management</h2>
-            <button onClick={openAddUser} className="btn-primary text-sm">+ Add User</button>
+            <button onClick={openAddUser} className="btn-primary btn-xs">+ Add User</button>
           </div>
           <div className="space-y-2">
             {users?.map(u => (
@@ -127,14 +127,14 @@ export default function SettingsPage() {
                   </span>
                   {!u.isActive && <span className="ml-2 badge-inactive">Inactive</span>}
                 </div>
-                <div className="flex gap-2">
-                  <button onClick={() => openEditUser(u)} className="btn-secondary text-xs px-2 py-1">Edit</button>
+                <div className="flex gap-1.5">
+                  <button onClick={() => openEditUser(u)} className="btn-secondary btn-xs">Edit</button>
                   {u.isActive ? (
-                    <button onClick={() => { if (window.confirm(`Deactivate ${u.username}?`)) deactivateUserMut.mutate(u._id); }} className="btn-danger text-xs px-2 py-1">
+                    <button onClick={() => { if (window.confirm(`Deactivate ${u.username}?`)) deactivateUserMut.mutate(u._id); }} className="btn-danger btn-xs">
                       Deactivate
                     </button>
                   ) : (
-                    <button onClick={() => updateUserMut.mutate({ id: u._id, data: { isActive: true } })} className="btn-secondary text-xs px-2 py-1">
+                    <button onClick={() => updateUserMut.mutate({ id: u._id, data: { isActive: true } })} className="btn-secondary btn-xs">
                       Reactivate
                     </button>
                   )}

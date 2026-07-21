@@ -18,7 +18,9 @@ export default {
           100: '#f1f5f9',
           200: '#e2e8f0',
           300: '#cbd5e1',
-          400: '#94a3b8',
+          // Was #94a3b8 (~2.5:1 contrast on white — fails WCAG AA for text). Darkened to
+          // match steel-500, which is already used everywhere as body text and passes AA.
+          400: '#64748b',
           500: '#64748b',
           600: '#475569',
           700: '#334155',

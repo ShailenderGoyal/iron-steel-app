@@ -5,9 +5,9 @@ import toast from 'react-hot-toast';
 import { inventoryAPI, suppliersAPI } from '../services/api';
 import { displayWeight, HARDNESS_LABELS, HARDNESS_COLORS, RUST_LEVELS, RUST_LABELS, RUST_COLORS } from '../utils/units';
 import { exportToCsv, stampedName } from '../utils/exportCsv';
+import { exportPdf } from '../utils/exportPdf';
 import PageHeader from '../components/PageHeader';
 import Modal from '../components/Modal';
-import UnitInput from '../components/UnitInput';
 import { MoveModal, HistoryModal } from '../components/InventoryMovementModals';
 
 const SORT_OPTIONS = [
@@ -121,9 +121,9 @@ export default function InventoryCoils() {
         title="Coil Inventory (माल)"
         subtitle={`${inventory?.length || 0} coils in stock`}
         actions={
-          <div className="flex gap-2">
-            <button onClick={() => exportToCsv(stampedName('coils'), EXPORT_COLUMNS, inventory || [])} className="btn-secondary hidden sm:flex">⬇️ Excel</button>
-            <button onClick={() => window.print()} className="btn-secondary hidden sm:flex">🖨️ Print</button>
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={() => exportToCsv(stampedName('coils'), EXPORT_COLUMNS, inventory || [])} className="btn-secondary">⬇️ Excel</button>
+            <button onClick={() => exportPdf({ title: 'Coil Inventory (माल)', subtitle: `${inventory?.length || 0} coils in stock`, columns: EXPORT_COLUMNS, rows: inventory || [], landscape: true })} className="btn-secondary">📄 PDF</button>
             <button onClick={openAdd} className="btn-primary">+ Add Coil</button>
           </div>
         }
@@ -178,25 +178,25 @@ export default function InventoryCoils() {
                   {coil.rust_level && <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${RUST_COLORS[coil.rust_level]}`}>{RUST_LABELS[coil.rust_level]}</span>}
                 </div>
               </div>
-              <div className="flex gap-1 flex-wrap justify-end">
-                <button onClick={() => findBuyers(coil)} className="btn-secondary px-2 py-1 text-xs">👥 Buyers</button>
-                <button onClick={() => setMoveItem(coil)} className="btn-secondary px-2 py-1 text-xs">↕ Move</button>
-                <button onClick={() => setHistoryId(coil._id)} className="btn-secondary px-2 py-1 text-xs">🕘</button>
-                <button onClick={() => openEdit(coil)} className="btn-secondary px-2 py-1 text-xs">Edit</button>
-                <button onClick={() => { if (window.confirm('Remove?')) deleteMut.mutate(coil._id); }} className="btn-danger px-2 py-1 text-xs">Del</button>
+              <div className="flex gap-1.5 flex-wrap justify-end">
+                <button onClick={() => findBuyers(coil)} className="btn-secondary btn-xs">👥 Buyers</button>
+                <button onClick={() => setMoveItem(coil)} className="btn-secondary btn-xs">↕ Move</button>
+                <button onClick={() => setHistoryId(coil._id)} className="btn-secondary btn-xs" aria-label="View history">🕘 History</button>
+                <button onClick={() => openEdit(coil)} className="btn-secondary btn-xs">Edit</button>
+                <button onClick={() => { if (window.confirm('Remove?')) deleteMut.mutate(coil._id); }} className="btn-danger btn-xs">Del</button>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2 text-sm text-steel-600">
-              <div><span className="text-xs text-steel-400">OD/ID</span><div>{coil.od_mm}/{coil.id_mm} mm</div></div>
-              <div><span className="text-xs text-steel-400">Total Wt</span><div>{displayWeight(coil.weight_kg)}</div></div>
+              <div><span className="text-sm text-steel-500">OD/ID</span><div className="font-medium text-steel-900">{coil.od_mm && coil.id_mm ? `${coil.od_mm}/${coil.id_mm} mm` : '—'}</div></div>
+              <div><span className="text-sm text-steel-500">Total Wt</span><div className="font-medium text-steel-900">{displayWeight(coil.weight_kg)}</div></div>
               <div>
-                <span className="text-xs text-steel-400">Remaining</span>
-                <div className="flex items-center gap-1">
+                <span className="text-sm text-steel-500">Remaining</span>
+                <div className="flex items-center gap-1 font-medium text-steel-900">
                   {displayWeight(coil.remaining_weight_kg)}
                   <div className="w-12 h-1.5 bg-steel-200 rounded-full"><div className="h-full bg-green-500 rounded-full" style={{ width: `${(coil.remaining_weight_kg / coil.weight_kg) * 100}%` }} /></div>
                 </div>
               </div>
-              {coil.supplier?.name && <div><span className="text-xs text-steel-400">Supplier</span><div>{coil.supplier.name}</div></div>}
+              {coil.supplier?.name && <div><span className="text-sm text-steel-500">Supplier</span><div className="font-medium text-steel-900">{coil.supplier.name}</div></div>}
             </div>
           </div>
         ))}
@@ -219,8 +219,8 @@ export default function InventoryCoils() {
               <tr><td colSpan={12} className="px-4 py-8 text-center text-steel-400">No coils in stock</td></tr>
             ) : inventory?.map(coil => (
               <tr key={coil._id} className="hover:bg-steel-50">
-                <td className="px-4 py-3">{coil.od_mm} mm</td>
-                <td className="px-4 py-3">{coil.id_mm} mm</td>
+                <td className="px-4 py-3">{coil.od_mm ? `${coil.od_mm} mm` : '—'}</td>
+                <td className="px-4 py-3">{coil.id_mm ? `${coil.id_mm} mm` : '—'}</td>
                 <td className="px-4 py-3 font-medium">{coil.width_mm} mm</td>
                 <td className="px-4 py-3 font-medium">{coil.gauge_mm} mm</td>
                 <td className="px-4 py-3"><span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${HARDNESS_COLORS[coil.hardness]}`}>{HARDNESS_LABELS[coil.hardness]}</span></td>
@@ -236,12 +236,12 @@ export default function InventoryCoils() {
                 <td className="px-4 py-3 text-steel-500">{coil.supplier?.name || '—'}</td>
                 <td className="px-4 py-3 text-steel-500">{coil.purchase_date ? new Date(coil.purchase_date).toLocaleDateString() : '—'}</td>
                 <td className="px-4 py-3">
-                  <div className="flex gap-1 flex-wrap">
-                    <button onClick={() => findBuyers(coil)} className="btn-secondary px-2 py-1 text-xs" title="Find parties who buy this size">👥</button>
-                    <button onClick={() => setMoveItem(coil)} className="btn-secondary px-2 py-1 text-xs" title="Move stock in/out">↕</button>
-                    <button onClick={() => setHistoryId(coil._id)} className="btn-secondary px-2 py-1 text-xs" title="View history">🕘</button>
-                    <button onClick={() => openEdit(coil)} className="btn-secondary px-2 py-1 text-xs">Edit</button>
-                    <button onClick={() => { if (window.confirm('Remove?')) deleteMut.mutate(coil._id); }} className="btn-danger px-2 py-1 text-xs">Del</button>
+                  <div className="flex gap-1.5 flex-wrap">
+                    <button onClick={() => findBuyers(coil)} className="btn-secondary btn-xs" title="Find parties who buy this size" aria-label="Find buyers for this size">👥</button>
+                    <button onClick={() => setMoveItem(coil)} className="btn-secondary btn-xs" title="Move stock in/out" aria-label="Move stock in or out">↕</button>
+                    <button onClick={() => setHistoryId(coil._id)} className="btn-secondary btn-xs" title="View history" aria-label="View change history">🕘</button>
+                    <button onClick={() => openEdit(coil)} className="btn-secondary btn-xs">Edit</button>
+                    <button onClick={() => { if (window.confirm('Remove?')) deleteMut.mutate(coil._id); }} className="btn-danger btn-xs">Del</button>
                   </div>
                 </td>
               </tr>
@@ -253,11 +253,26 @@ export default function InventoryCoils() {
       {/* Modal */}
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? 'Edit Coil' : 'Add Coil (माल जोड़ें)'} size="lg">
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <UnitInput label="Outer Diameter (OD)" value_mm={form.od_mm} onChange={v => setForm(f => ({ ...f, od_mm: v }))} required />
-            <UnitInput label="Inner Diameter (ID)" value_mm={form.id_mm} onChange={v => setForm(f => ({ ...f, id_mm: v }))} required />
-            <UnitInput label="Width (चौड़ाई)" value_mm={form.width_mm} onChange={v => setForm(f => ({ ...f, width_mm: v }))} required />
-            <UnitInput label="Gauge / Thickness (मोटाई)" value_mm={form.gauge_mm} onChange={v => setForm(f => ({ ...f, gauge_mm: v }))} required />
+          <div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm text-steel-600">Width (चौड़ाई) — mm <span className="text-red-500">*</span></label>
+                <input type="number" className="input" step="0.1" value={form.width_mm ?? ''} onChange={e => setForm(f => ({ ...f, width_mm: e.target.value === '' ? null : parseFloat(e.target.value) }))} required placeholder="e.g. 500" />
+              </div>
+              <div>
+                <label className="text-sm text-steel-600">Gauge / Thickness (मोटाई) — mm <span className="text-red-500">*</span></label>
+                <input type="number" className="input" step="0.01" value={form.gauge_mm ?? ''} onChange={e => setForm(f => ({ ...f, gauge_mm: e.target.value === '' ? null : parseFloat(e.target.value) }))} required placeholder="e.g. 2" />
+              </div>
+              <div>
+                <label className="text-sm text-steel-600">Outer Diameter — OD (mm)</label>
+                <input type="number" className="input" step="0.1" value={form.od_mm ?? ''} onChange={e => setForm(f => ({ ...f, od_mm: e.target.value === '' ? null : parseFloat(e.target.value) }))} placeholder="optional" />
+              </div>
+              <div>
+                <label className="text-sm text-steel-600">Inner Diameter — ID (mm)</label>
+                <input type="number" className="input" step="0.1" value={form.id_mm ?? ''} onChange={e => setForm(f => ({ ...f, id_mm: e.target.value === '' ? null : parseFloat(e.target.value) }))} placeholder="optional" />
+              </div>
+            </div>
+            <div className="text-sm text-steel-500 mt-1">OD + ID are only needed to calculate weight automatically — leave them blank and enter the weight directly below instead.</div>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             <div>
@@ -301,10 +316,10 @@ export default function InventoryCoils() {
                 onChange={e => { const v = e.target.value; if (v === '' || /^\d*\.?\d*$/.test(v)) setForm(f => ({ ...f, weight_kg: v, weight_manual: true })); }}
                 placeholder="auto from dimensions" />
               {form.weight_manual
-                ? <button type="button" onClick={() => setForm(f => ({ ...f, weight_manual: false, weight_kg: null }))} className="btn-secondary text-xs whitespace-nowrap">↺ Auto</button>
-                : <span className="text-xs text-blue-500 whitespace-nowrap">auto</span>}
+                ? <button type="button" onClick={() => setForm(f => ({ ...f, weight_manual: false, weight_kg: null }))} className="btn-secondary btn-xs whitespace-nowrap">↺ Auto</button>
+                : <span className="text-sm text-blue-600 whitespace-nowrap">auto</span>}
             </div>
-            <div className="text-blue-500 text-xs mt-1">{form.weight_manual ? '✏️ manual override' : '(π/4) × (OD² − ID²) × Width × 0.00786 — type to override'}</div>
+            <div className="text-blue-600 text-sm mt-1">{form.weight_manual ? '✏️ manual override' : '(π/4) × (OD² − ID²) × Width × 0.00786 — type to override'}</div>
           </div>
           <div>
             <label className="label">Notes</label>

@@ -27,8 +27,10 @@ const baseInventory = {
 const coilSchema = new mongoose.Schema({
   ...baseInventory,
   item_type: { type: String, default: 'coil', immutable: true },
-  od_mm: { type: Number, required: true },
-  id_mm: { type: Number, required: true },
+  // OD/ID are optional: they're only needed to auto-calculate weight. A coil can also be
+  // logged with just its width/gauge and a directly-entered weight.
+  od_mm: { type: Number },
+  id_mm: { type: Number },
   width_mm: { type: Number, required: true },
   gauge_mm: { type: Number, required: true },
 }, { timestamps: true });

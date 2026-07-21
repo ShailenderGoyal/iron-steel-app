@@ -5,9 +5,9 @@ import toast from 'react-hot-toast';
 import { inventoryAPI, suppliersAPI } from '../services/api';
 import { displayWeight, HARDNESS_LABELS, HARDNESS_COLORS, SHEET_PRESETS, RUST_LEVELS, RUST_LABELS, RUST_COLORS } from '../utils/units';
 import { exportToCsv, stampedName } from '../utils/exportCsv';
+import { exportPdf } from '../utils/exportPdf';
 import PageHeader from '../components/PageHeader';
 import Modal from '../components/Modal';
-import UnitInput from '../components/UnitInput';
 import { MoveModal, HistoryModal } from '../components/InventoryMovementModals';
 
 const HARDNESS_LIST = ['soft', 'semi_soft', 'medium', 'medium_hard', 'hard'];
@@ -126,9 +126,9 @@ export default function InventorySheets() {
         title="Sheet Inventory (पत्र)"
         subtitle={`${inventory?.length || 0} sheet types in stock`}
         actions={
-          <div className="flex gap-2">
-            <button onClick={() => exportToCsv(stampedName('sheets'), EXPORT_COLUMNS, inventory || [])} className="btn-secondary hidden sm:flex">⬇️ Excel</button>
-            <button onClick={() => window.print()} className="btn-secondary hidden sm:flex">🖨️ Print</button>
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={() => exportToCsv(stampedName('sheets'), EXPORT_COLUMNS, inventory || [])} className="btn-secondary">⬇️ Excel</button>
+            <button onClick={() => exportPdf({ title: 'Sheet Inventory (पत्र)', subtitle: `${inventory?.length || 0} sheet types in stock`, columns: EXPORT_COLUMNS, rows: inventory || [], landscape: true })} className="btn-secondary">📄 PDF</button>
             <button onClick={openAdd} className="btn-primary">+ Add Sheet</button>
           </div>
         }
@@ -175,25 +175,25 @@ export default function InventorySheets() {
                   <span className="text-xs text-steel-500">{sheet.thickness_mm}mm</span>
                 </div>
               </div>
-              <div className="flex gap-1 flex-wrap justify-end">
-                <button onClick={() => findBuyers(sheet)} className="btn-secondary px-2 py-1 text-xs">👥 Buyers</button>
-                <button onClick={() => setMoveItem(sheet)} className="btn-secondary px-2 py-1 text-xs">↕ Move</button>
-                <button onClick={() => setHistoryId(sheet._id)} className="btn-secondary px-2 py-1 text-xs">🕘</button>
-                <button onClick={() => openEdit(sheet)} className="btn-secondary px-2 py-1 text-xs">Edit</button>
-                <button onClick={() => { if (window.confirm('Remove?')) deleteMut.mutate(sheet._id); }} className="btn-danger px-2 py-1 text-xs">Del</button>
+              <div className="flex gap-1.5 flex-wrap justify-end">
+                <button onClick={() => findBuyers(sheet)} className="btn-secondary btn-xs">👥 Buyers</button>
+                <button onClick={() => setMoveItem(sheet)} className="btn-secondary btn-xs">↕ Move</button>
+                <button onClick={() => setHistoryId(sheet._id)} className="btn-secondary btn-xs" aria-label="View history">🕘 History</button>
+                <button onClick={() => openEdit(sheet)} className="btn-secondary btn-xs">Edit</button>
+                <button onClick={() => { if (window.confirm('Remove?')) deleteMut.mutate(sheet._id); }} className="btn-danger btn-xs">Del</button>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2 text-sm text-steel-600">
-              <div><span className="text-xs text-steel-400">Qty</span><div>{sheet.quantity} sheets</div></div>
-              <div><span className="text-xs text-steel-400">Wt/sheet</span><div>{displayWeight(sheet.weight_per_sheet_kg)}</div></div>
+              <div><span className="text-sm text-steel-500">Qty</span><div className="font-medium text-steel-900">{sheet.quantity} sheets</div></div>
+              <div><span className="text-sm text-steel-500">Wt/sheet</span><div className="font-medium text-steel-900">{displayWeight(sheet.weight_per_sheet_kg)}</div></div>
               <div>
-                <span className="text-xs text-steel-400">Remaining</span>
-                <div className="flex items-center gap-1">
+                <span className="text-sm text-steel-500">Remaining</span>
+                <div className="flex items-center gap-1 font-medium text-steel-900">
                   {displayWeight(sheet.remaining_weight_kg)}
                   <div className="w-10 h-1.5 bg-steel-200 rounded-full"><div className="h-full bg-green-500 rounded-full" style={{ width: `${(sheet.remaining_weight_kg / sheet.weight_kg) * 100}%` }} /></div>
                 </div>
               </div>
-              {sheet.supplier?.name && <div><span className="text-xs text-steel-400">Supplier</span><div>{sheet.supplier.name}</div></div>}
+              {sheet.supplier?.name && <div><span className="text-sm text-steel-500">Supplier</span><div className="font-medium text-steel-900">{sheet.supplier.name}</div></div>}
             </div>
           </div>
         ))}
@@ -233,12 +233,12 @@ export default function InventorySheets() {
                 </td>
                 <td className="px-4 py-3 text-steel-500">{sheet.supplier?.name || '—'}</td>
                 <td className="px-4 py-3">
-                  <div className="flex gap-1 flex-wrap">
-                    <button onClick={() => findBuyers(sheet)} className="btn-secondary px-2 py-1 text-xs" title="Find parties who buy this size">👥</button>
-                    <button onClick={() => setMoveItem(sheet)} className="btn-secondary px-2 py-1 text-xs" title="Move stock in/out">↕</button>
-                    <button onClick={() => setHistoryId(sheet._id)} className="btn-secondary px-2 py-1 text-xs" title="View history">🕘</button>
-                    <button onClick={() => openEdit(sheet)} className="btn-secondary px-2 py-1 text-xs">Edit</button>
-                    <button onClick={() => { if (window.confirm('Remove?')) deleteMut.mutate(sheet._id); }} className="btn-danger px-2 py-1 text-xs">Del</button>
+                  <div className="flex gap-1.5 flex-wrap">
+                    <button onClick={() => findBuyers(sheet)} className="btn-secondary btn-xs" title="Find parties who buy this size" aria-label="Find buyers for this size">👥</button>
+                    <button onClick={() => setMoveItem(sheet)} className="btn-secondary btn-xs" title="Move stock in/out" aria-label="Move stock in or out">↕</button>
+                    <button onClick={() => setHistoryId(sheet._id)} className="btn-secondary btn-xs" title="View history" aria-label="View change history">🕘</button>
+                    <button onClick={() => openEdit(sheet)} className="btn-secondary btn-xs">Edit</button>
+                    <button onClick={() => { if (window.confirm('Remove?')) deleteMut.mutate(sheet._id); }} className="btn-danger btn-xs">Del</button>
                   </div>
                 </td>
               </tr>
@@ -256,11 +256,20 @@ export default function InventorySheets() {
             </select>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <UnitInput label="Length" value_mm={form.length_mm} onChange={v => setForm(f => ({ ...f, length_mm: v }))} required />
-            <UnitInput label="Width (चौड़ाई)" value_mm={form.width_mm} onChange={v => setForm(f => ({ ...f, width_mm: v }))} required />
-            <UnitInput label="Thickness (मोटाई)" value_mm={form.thickness_mm} onChange={v => setForm(f => ({ ...f, thickness_mm: v }))} required />
             <div>
-              <label className="label">Quantity</label>
+              <label className="text-sm text-steel-600">Length — mm <span className="text-red-500">*</span></label>
+              <input type="number" className="input" step="0.1" value={form.length_mm ?? ''} onChange={e => setForm(f => ({ ...f, length_mm: e.target.value === '' ? null : parseFloat(e.target.value) }))} required placeholder="e.g. 2500" />
+            </div>
+            <div>
+              <label className="text-sm text-steel-600">Width (चौड़ाई) — mm <span className="text-red-500">*</span></label>
+              <input type="number" className="input" step="0.1" value={form.width_mm ?? ''} onChange={e => setForm(f => ({ ...f, width_mm: e.target.value === '' ? null : parseFloat(e.target.value) }))} required placeholder="e.g. 900" />
+            </div>
+            <div>
+              <label className="text-sm text-steel-600">Thickness (मोटाई) — mm <span className="text-red-500">*</span></label>
+              <input type="number" className="input" step="0.01" value={form.thickness_mm ?? ''} onChange={e => setForm(f => ({ ...f, thickness_mm: e.target.value === '' ? null : parseFloat(e.target.value) }))} required placeholder="e.g. 5" />
+            </div>
+            <div>
+              <label className="text-sm text-steel-600">Quantity</label>
               <input type="number" className="input" min="1" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: parseInt(e.target.value) || 1 }))} />
             </div>
           </div>
@@ -306,10 +315,10 @@ export default function InventorySheets() {
                 onChange={e => { const v = e.target.value; if (v === '' || /^\d*\.?\d*$/.test(v)) setForm(f => ({ ...f, weight_kg: v, weight_manual: true })); }}
                 placeholder="auto from dimensions" />
               {form.weight_manual
-                ? <button type="button" onClick={() => setForm(f => ({ ...f, weight_manual: false, weight_kg: null }))} className="btn-secondary text-xs whitespace-nowrap">↺ Auto</button>
-                : <span className="text-xs text-blue-500 whitespace-nowrap">auto</span>}
+                ? <button type="button" onClick={() => setForm(f => ({ ...f, weight_manual: false, weight_kg: null }))} className="btn-secondary btn-xs whitespace-nowrap">↺ Auto</button>
+                : <span className="text-sm text-blue-600 whitespace-nowrap">auto</span>}
             </div>
-            <div className="text-blue-500 text-xs mt-1">Per sheet {displayWeight(effectivePer)} × {form.quantity || 1}{form.weight_manual ? ' · ✏️ manual override' : ' — type to override'}</div>
+            <div className="text-blue-600 text-sm mt-1">Per sheet {displayWeight(effectivePer)} × {form.quantity || 1}{form.weight_manual ? ' · ✏️ manual override' : ' — type to override'}</div>
           </div>
           <div>
             <label className="label">Notes</label>
