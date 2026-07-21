@@ -2,8 +2,9 @@ const mongoose = require('mongoose');
 
 const preferredSizeSchema = new mongoose.Schema({
   item_type: { type: String, enum: ['coil', 'sheet'], default: 'coil' },
-  width_mm: { type: Number },
-  thickness_mm: { type: Number }, // gauge (coil) or thickness (sheet) — same field, contextual label in the UI
+  width_mm: { type: Number }, // blank = any width accepted
+  thickness_mm: { type: Number }, // gauge (coil) or thickness (sheet); blank = any gauge accepted
+  length_mm: { type: Number }, // sheet only; blank = any length accepted
   hardness: { type: String, enum: ['soft', 'semi_soft', 'medium', 'medium_hard', 'hard'] }, // legacy, kept for old data; no longer shown/required in the size-matching UI
   notes: { type: String },
 }, { _id: false });

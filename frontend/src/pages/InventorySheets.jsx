@@ -74,7 +74,7 @@ export default function InventorySheets() {
     return sorted;
   }, [rawInventory, sort]);
 
-  const findBuyers = (sheet) => navigate(`/customers?type=sheet&width=${sheet.width_mm}&gauge=${sheet.thickness_mm}`);
+  const findBuyers = (sheet) => navigate(`/customers?type=sheet&width=${sheet.width_mm}&gauge=${sheet.thickness_mm}&length=${sheet.length_mm}`);
 
   const createMut = useMutation({
     mutationFn: inventoryAPI.createSheet,

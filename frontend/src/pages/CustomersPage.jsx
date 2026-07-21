@@ -7,7 +7,26 @@ import PageHeader from '../components/PageHeader';
 import Modal from '../components/Modal';
 
 const emptyForm = { name: '', contact: '', phone: '', address: '', preferred_sizes: [], notes: '' };
-const emptySize = { item_type: 'coil', width_mm: '', thickness_mm: '', notes: '' };
+const emptySize = { item_type: 'coil', width_mm: '', thickness_mm: '', length_mm: '', notes: '' };
+
+// Checks one dimension of a party's saved size against a search value.
+// A blank value on the party's side means "accepts any" — always matches, but is
+// flagged as a wildcard so the UI can show it's not an exact match.
+function checkDim(partyVal, searchVal, tol, dimName, wildcards) {
+  if (searchVal == null) return true; // this dimension wasn't searched — irrelevant
+  if (partyVal == null || partyVal === '') { wildcards.push(dimName); return true; }
+  return Math.abs(Number(partyVal) - searchVal) <= tol;
+}
+
+// Returns { size, wildcards } if `s` matches the filter, else null.
+function matchSize(s, filter) {
+  if ((s.item_type || 'coil') !== filter.item_type) return null;
+  const wildcards = [];
+  if (!checkDim(s.width_mm, filter.width_mm, filter.width_tol, 'width', wildcards)) return null;
+  if (!checkDim(s.thickness_mm, filter.gauge_mm, filter.gauge_tol, 'gauge', wildcards)) return null;
+  if (filter.item_type === 'sheet' && !checkDim(s.length_mm, filter.length_mm, filter.length_tol, 'length', wildcards)) return null;
+  return { size: s, wildcards };
+}
 
 export default function CustomersPage() {
   const qc = useQueryClient();
@@ -15,14 +34,16 @@ export default function CustomersPage() {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm);
-  const [showSearch, setShowSearch] = useState(!!(params.get('width') || params.get('gauge')));
+  const [showSearch, setShowSearch] = useState(!!(params.get('width') || params.get('gauge') || params.get('length')));
 
   const [search, setSearch] = useState({
     item_type: params.get('type') || 'coil',
     width_mm: params.get('width') || '',
     gauge_mm: params.get('gauge') || '',
+    length_mm: params.get('length') || '',
     width_tol: 2,
     gauge_tol: 0.05,
+    length_tol: 2,
   });
 
   const { data: customers, isLoading } = useQuery({
@@ -56,6 +77,7 @@ export default function CustomersPage() {
   const updateSize = (i, key, val) => setForm(f => {
     const ps = [...f.preferred_sizes];
     ps[i] = { ...ps[i], [key]: val };
+    if (key === 'item_type' && val === 'coil') ps[i].length_mm = ''; // length isn't applicable to coils
     return { ...f, preferred_sizes: ps };
   });
 
@@ -63,26 +85,30 @@ export default function CustomersPage() {
     e.preventDefault();
     const data = {
       ...form,
-      preferred_sizes: form.preferred_sizes.filter(s => s.width_mm || s.thickness_mm),
+      preferred_sizes: form.preferred_sizes.filter(s => s.width_mm || s.thickness_mm || s.length_mm),
     };
     if (editing) updateMut.mutate({ id: editing, data });
     else createMut.mutate(data);
   };
 
-  // --- Search by size: which parties buy a given width+gauge (coil or sheet)? ---
-  const searchActive = search.width_mm !== '' || search.gauge_mm !== '';
+  // --- Search by size: which parties buy a given width+gauge(+length for sheets)? ---
+  // A blank field on a party's saved size means "accepts any" for that dimension —
+  // still a match, but flagged (not exact) so the results clearly show it.
+  const searchActive = search.width_mm !== '' || search.gauge_mm !== '' || search.length_mm !== '';
   const results = useMemo(() => {
     if (!searchActive || !customers) return [];
-    const w = search.width_mm !== '' ? parseFloat(search.width_mm) : null;
-    const g = search.gauge_mm !== '' ? parseFloat(search.gauge_mm) : null;
+    const filter = {
+      item_type: search.item_type,
+      width_mm: search.width_mm !== '' ? parseFloat(search.width_mm) : null,
+      gauge_mm: search.gauge_mm !== '' ? parseFloat(search.gauge_mm) : null,
+      length_mm: search.length_mm !== '' ? parseFloat(search.length_mm) : null,
+      width_tol: Number(search.width_tol || 0),
+      gauge_tol: Number(search.gauge_tol || 0),
+      length_tol: Number(search.length_tol || 0),
+    };
     const out = [];
     for (const c of customers) {
-      const matched = (c.preferred_sizes || []).filter(s => {
-        if ((s.item_type || 'coil') !== search.item_type) return false;
-        if (w != null && Math.abs((s.width_mm ?? -Infinity) - w) > Number(search.width_tol || 0)) return false;
-        if (g != null && Math.abs((s.thickness_mm ?? -Infinity) - g) > Number(search.gauge_tol || 0)) return false;
-        return true;
-      });
+      const matched = (c.preferred_sizes || []).map(s => matchSize(s, filter)).filter(Boolean);
       if (matched.length) out.push({ customer: c, matched });
     }
     return out;
@@ -91,7 +117,7 @@ export default function CustomersPage() {
   const updateSearch = (key, val) => {
     setSearch(s => ({ ...s, [key]: val }));
     const next = { ...search, [key]: val };
-    setParams({ type: next.item_type, width: next.width_mm, gauge: next.gauge_mm }, { replace: true });
+    setParams({ type: next.item_type, width: next.width_mm, gauge: next.gauge_mm, length: next.length_mm }, { replace: true });
   };
 
   return (
@@ -113,7 +139,7 @@ export default function CustomersPage() {
       {showSearch && (
         <div className="card mb-4 no-print">
           <h2 className="font-semibold mb-3">🔎 Search Parties by Size</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 items-end">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 items-end">
             <div>
               <label className="label">Type</label>
               <select className="select" value={search.item_type} onChange={e => updateSearch('item_type', e.target.value)}>
@@ -137,7 +163,20 @@ export default function CustomersPage() {
               <label className="label">± Tolerance</label>
               <input type="number" step="0.01" className="input" value={search.gauge_tol} onChange={e => updateSearch('gauge_tol', e.target.value)} />
             </div>
+            {search.item_type === 'sheet' && (
+              <>
+                <div>
+                  <label className="label">Length (mm)</label>
+                  <input type="number" step="0.1" className="input" value={search.length_mm} onChange={e => updateSearch('length_mm', e.target.value)} placeholder="e.g. 2500" />
+                </div>
+                <div>
+                  <label className="label">± Tolerance</label>
+                  <input type="number" step="0.1" className="input" value={search.length_tol} onChange={e => updateSearch('length_tol', e.target.value)} />
+                </div>
+              </>
+            )}
           </div>
+          <div className="text-xs text-steel-400 mt-2">Parties with a blank width/gauge/length accept any value for that dimension — they'll still show up as a match, marked "any".</div>
         </div>
       )}
 
@@ -145,7 +184,7 @@ export default function CustomersPage() {
         <div className="card mb-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold">
-              {search.item_type === 'coil' ? '🔩' : '📄'} {search.width_mm || '—'}mm × {search.gauge_mm || '—'}mm — {search.item_type === 'coil' ? 'Coil' : 'Sheet'}
+              {search.item_type === 'coil' ? '🔩' : '📄'} {search.width_mm || '—'}mm × {search.gauge_mm || '—'}mm{search.item_type === 'sheet' ? ` × ${search.length_mm || '—'}mm` : ''} — {search.item_type === 'coil' ? 'Coil' : 'Sheet'}
               <span className="text-steel-400 font-normal text-sm ml-2">({results.length} part{results.length === 1 ? 'y' : 'ies'})</span>
             </h2>
             <button onClick={() => window.print()} className="btn-primary text-sm no-print">🖨️ Print This List</button>
@@ -157,7 +196,7 @@ export default function CustomersPage() {
               <table className="w-full text-sm">
                 <thead className="bg-steel-50 border-b border-steel-200">
                   <tr>
-                    {['Party', 'Phone', 'Matched Size', 'Notes'].map(h => (
+                    {['Party', 'Phone', 'Matched Size', 'Match', 'Notes'].map(h => (
                       <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-steel-600 uppercase">{h}</th>
                     ))}
                   </tr>
@@ -167,8 +206,24 @@ export default function CustomersPage() {
                     <tr key={c._id}>
                       <td className="px-3 py-2 font-medium">{c.name}</td>
                       <td className="px-3 py-2">{c.phone || '—'}</td>
-                      <td className="px-3 py-2">{matched.map((s, i) => <div key={i}>{s.width_mm}mm × {s.thickness_mm}mm</div>)}</td>
-                      <td className="px-3 py-2 text-steel-500">{matched.map(s => s.notes).filter(Boolean).join('; ') || '—'}</td>
+                      <td className="px-3 py-2">
+                        {matched.map(({ size: s }, i) => (
+                          <div key={i}>
+                            {s.width_mm ? `${s.width_mm}mm` : 'any width'} × {s.thickness_mm ? `${s.thickness_mm}mm` : 'any gauge'}
+                            {search.item_type === 'sheet' && <> × {s.length_mm ? `${s.length_mm}mm` : 'any length'}</>}
+                          </div>
+                        ))}
+                      </td>
+                      <td className="px-3 py-2">
+                        {matched.map(({ wildcards }, i) => (
+                          <div key={i}>
+                            {wildcards.length === 0
+                              ? <span className="text-green-600 text-xs font-medium">✓ Exact</span>
+                              : <span className="text-amber-600 text-xs font-medium">⚠ Not exact — any {wildcards.join('/')}</span>}
+                          </div>
+                        ))}
+                      </td>
+                      <td className="px-3 py-2 text-steel-500">{matched.map(({ size: s }) => s.notes).filter(Boolean).join('; ') || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -201,7 +256,8 @@ export default function CustomersPage() {
                 <div className="flex flex-wrap gap-1">
                   {c.preferred_sizes.map((s, i) => (
                     <span key={i} className="bg-steel-100 text-steel-700 text-xs px-2 py-0.5 rounded">
-                      {s.item_type === 'sheet' ? '📄' : '🔩'} {s.width_mm && `${s.width_mm}mm`}{s.thickness_mm && ` × ${s.thickness_mm}mm`}
+                      {s.item_type === 'sheet' ? '📄' : '🔩'} {s.width_mm ? `${s.width_mm}mm` : 'any width'} × {s.thickness_mm ? `${s.thickness_mm}mm` : 'any gauge'}
+                      {s.item_type === 'sheet' && <> × {s.length_mm ? `${s.length_mm}mm` : 'any length'}</>}
                     </span>
                   ))}
                 </div>
@@ -237,32 +293,41 @@ export default function CustomersPage() {
               <label className="label mb-0">Sizes Used (साइज़)</label>
               <button type="button" onClick={addSize} className="btn-secondary text-xs">+ Add Size</button>
             </div>
-            {form.preferred_sizes.map((s, i) => (
-              <div key={i} className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-2 p-2 bg-steel-50 rounded-lg">
-                <div>
-                  <label className="text-xs text-steel-500">Type</label>
-                  <select className="select" value={s.item_type || 'coil'} onChange={e => updateSize(i, 'item_type', e.target.value)}>
-                    <option value="coil">🔩 Coil</option>
-                    <option value="sheet">📄 Sheet</option>
-                  </select>
+            {form.preferred_sizes.map((s, i) => {
+              const isCoil = (s.item_type || 'coil') === 'coil';
+              return (
+                <div key={i} className="grid grid-cols-2 sm:grid-cols-6 gap-2 mb-2 p-2 bg-steel-50 rounded-lg">
+                  <div>
+                    <label className="text-xs text-steel-500">Type</label>
+                    <select className="select" value={s.item_type || 'coil'} onChange={e => updateSize(i, 'item_type', e.target.value)}>
+                      <option value="coil">🔩 Coil</option>
+                      <option value="sheet">📄 Sheet</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-steel-500">Width (mm)</label>
+                    <input type="number" className="input" step="0.1" value={s.width_mm} onChange={e => updateSize(i, 'width_mm', e.target.value)} placeholder="blank = any" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-steel-500">Gauge/Thickness (mm)</label>
+                    <input type="number" className="input" step="0.01" value={s.thickness_mm} onChange={e => updateSize(i, 'thickness_mm', e.target.value)} placeholder="blank = any" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-steel-500">Length (mm){isCoil ? ' — n/a' : ''}</label>
+                    <input type="number" className="input" step="0.1" value={s.length_mm} disabled={isCoil}
+                      onChange={e => updateSize(i, 'length_mm', e.target.value)} placeholder={isCoil ? 'n/a for coils' : 'blank = any'} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-steel-500">Notes</label>
+                    <input className="input" value={s.notes || ''} onChange={e => updateSize(i, 'notes', e.target.value)} placeholder="optional" />
+                  </div>
+                  <div className="flex items-end">
+                    <button type="button" onClick={() => removeSize(i)} className="btn-danger px-3 py-2 text-xs w-full">Remove</button>
+                  </div>
                 </div>
-                <div>
-                  <label className="text-xs text-steel-500">Width (mm)</label>
-                  <input type="number" className="input" step="0.1" value={s.width_mm} onChange={e => updateSize(i, 'width_mm', e.target.value)} placeholder="mm" />
-                </div>
-                <div>
-                  <label className="text-xs text-steel-500">Gauge/Thickness (mm)</label>
-                  <input type="number" className="input" step="0.01" value={s.thickness_mm} onChange={e => updateSize(i, 'thickness_mm', e.target.value)} placeholder="mm" />
-                </div>
-                <div className="sm:col-span-1">
-                  <label className="text-xs text-steel-500">Notes</label>
-                  <input className="input" value={s.notes || ''} onChange={e => updateSize(i, 'notes', e.target.value)} placeholder="optional" />
-                </div>
-                <div className="flex items-end">
-                  <button type="button" onClick={() => removeSize(i)} className="btn-danger px-3 py-2 text-xs w-full">Remove</button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
+            <div className="text-xs text-steel-400">Leave width/gauge/length blank if this party accepts any value for that dimension.</div>
           </div>
 
           <div>
