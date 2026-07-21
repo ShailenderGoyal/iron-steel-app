@@ -165,12 +165,6 @@ async function seedData() {
     await User.create({ username: 'supervisor', password: 'Super@2024', role: 'supervisor' });
     console.log('Users created');
   }
-  // Developer login (checked independently so it's created even on a DB that was seeded before this existed).
-  const existingSG = await User.findOne({ username: 'SG' });
-  if (!existingSG) {
-    await User.create({ username: 'SG', password: 'sg', role: 'owner' });
-    console.log('SG (developer) user created');
-  }
 
   // Machines
   const existingMachines = await Machine.countDocuments();
