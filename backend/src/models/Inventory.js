@@ -1,10 +1,11 @@
 const mongoose = require('mongoose');
 
 const movementSchema = new mongoose.Schema({
-  type: { type: String, enum: ['purchase', 'job_deduction', 'scrap', 'adjustment'], required: true },
+  type: { type: String, enum: ['purchase', 'job_deduction', 'scrap', 'adjustment', 'manual_in', 'manual_out', 'edit'], required: true },
   weight_kg: { type: Number, required: true },
   reference: { type: String }, // order id or job id
   notes: { type: String },
+  by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // who made the change — audit trail
   date: { type: Date, default: Date.now },
 }, { _id: false });
 

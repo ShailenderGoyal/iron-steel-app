@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { inventoryAPI, ordersAPI, optimizationAPI, scrapAPI } from '../services/api';
-import { displayWeight, HARDNESS_LABELS } from '../utils/units';
+import { inventoryAPI, customersAPI } from '../services/api';
+import { displayWeight } from '../utils/units';
 import { useAuth } from '../context/AuthContext';
 
 function StatCard({ title, value, subtitle, icon, color = 'bg-primary-50 text-primary-700' }) {
@@ -20,13 +20,7 @@ export default function Dashboard() {
   const { user, isOwner } = useAuth();
 
   const { data: stats } = useQuery({ queryKey: ['inventory-stats'], queryFn: () => inventoryAPI.getStats().then(r => r.data) });
-  const { data: orders } = useQuery({ queryKey: ['orders', { status: 'pending' }], queryFn: () => ordersAPI.getAll({ status: 'pending' }).then(r => r.data) });
-  const { data: urgentOrders } = useQuery({ queryKey: ['orders', { priority: 'high' }], queryFn: () => ordersAPI.getAll({ priority: 'high' }).then(r => r.data) });
-  const { data: jobs } = useQuery({ queryKey: ['jobs-in-progress'], queryFn: () => optimizationAPI.getJobs({ status: 'in_progress' }).then(r => r.data) });
-  const { data: scrapSummary } = useQuery({ queryKey: ['scrap-summary'], queryFn: () => scrapAPI.getSummary().then(r => r.data) });
-
-  const pendingCount = orders?.length || 0;
-  const highPriorityCount = urgentOrders?.filter(o => o.status !== 'dispatched').length || 0;
+  const { data: customers } = useQuery({ queryKey: ['customers'], queryFn: () => customersAPI.getAll().then(r => r.data), enabled: isOwner });
 
   return (
     <div>
@@ -37,13 +31,13 @@ export default function Dashboard() {
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-        <StatCard title="Pending Orders" value={pendingCount} subtitle="Awaiting production" icon="📋" color="bg-yellow-50 text-yellow-700" />
-        <StatCard title="High Priority" value={highPriorityCount} subtitle="Urgent" icon="🔴" color="bg-red-50 text-red-700" />
         <StatCard title="Coil Stock" value={stats ? displayWeight(stats.total_coil_kg) : '—'} subtitle={`${stats?.coil_count || 0} coils`} icon="🔩" color="bg-blue-50 text-blue-700" />
         <StatCard title="Sheet Stock" value={stats ? displayWeight(stats.total_sheet_kg) : '—'} subtitle={`${stats?.sheet_count || 0} sheets`} icon="📄" color="bg-green-50 text-green-700" />
+        <StatCard title="Total Stock" value={stats ? displayWeight(stats.total_stock_kg) : '—'} subtitle="coils + sheets" icon="📦" color="bg-indigo-50 text-indigo-700" />
+        {isOwner && <StatCard title="Parties" value={customers?.length || 0} subtitle="buyers on file" icon="👥" color="bg-purple-50 text-purple-700" />}
       </div>
 
-      {/* Low-stock alert (जंग कम स्टॉक) */}
+      {/* Low-stock alert (कम स्टॉक) */}
       {stats?.low_stock?.length > 0 && (
         <div className="card mb-5 border-l-4 border-amber-400 bg-amber-50">
           <div className="flex items-center justify-between mb-2">
@@ -63,99 +57,25 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Pending Orders */}
-        <div className="card">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold">Pending Orders (ऑर्डर)</h2>
-            <a href="/orders" className="text-primary-600 text-sm hover:underline">All →</a>
-          </div>
-          {orders?.length === 0 ? (
-            <div className="text-steel-400 text-sm text-center py-6">No pending orders</div>
-          ) : (
-            <div className="space-y-2">
-              {orders?.slice(0, 5).map(order => (
-                <div key={order._id} className="flex items-center justify-between p-3 bg-steel-50 rounded-lg">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium text-sm">{order.order_number}</span>
-                      {order.priority === 'high' && <span className="badge-high">High</span>}
-                    </div>
-                    {isOwner && <div className="text-xs text-steel-500 truncate">{order.customer?.name}</div>}
-                  </div>
-                  <div className="text-right ml-2 flex-shrink-0">
-                    <span className={`badge-${order.status}`}>{order.status.replace('_', ' ')}</span>
-                    {order.deadline && <div className="text-xs text-steel-400 mt-0.5">{new Date(order.deadline).toLocaleDateString()}</div>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Active Jobs */}
-        <div className="card">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold">Active Jobs (काटा)</h2>
-            <a href="/production" className="text-primary-600 text-sm hover:underline">Production →</a>
-          </div>
-          {!jobs?.length ? (
-            <div className="text-steel-400 text-sm text-center py-6">No active cutting jobs</div>
-          ) : (
-            <div className="space-y-2">
-              {jobs.slice(0, 5).map(job => (
-                <div key={job._id} className="flex items-center justify-between p-3 bg-steel-50 rounded-lg">
-                  <div>
-                    <div className="font-medium text-sm">{job.job_number}</div>
-                    <div className="text-xs text-steel-500">{job.machine?.name}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="badge-in_production">In Progress</div>
-                    {job.estimated_time_hrs && <div className="text-xs text-steel-400 mt-0.5">~{job.estimated_time_hrs.toFixed(1)}h</div>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Wastage summary */}
-        {scrapSummary && (
-          <div className="card">
-            <h2 className="font-semibold mb-3">Wastage Summary (बर्बादी)</h2>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="text-center">
-                <div className="text-xl font-bold text-orange-600">{displayWeight(scrapSummary.total_wastage_kg)}</div>
-                <div className="text-xs text-steel-500">Total Wastage</div>
+      {/* Quick actions */}
+      <div className="card">
+        <h2 className="font-semibold mb-3">Quick Actions</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {[
+            { href: '/inventory/coils', icon: '🔩', label: 'Add Coil', sub: 'माल जोड़ें' },
+            { href: '/inventory/sheets', icon: '📄', label: 'Add Sheet', sub: 'पत्र जोड़ें' },
+            { href: '/customers', icon: '👥', label: 'Parties', sub: 'पार्टी' },
+            { href: '/customers', icon: '🔎', label: 'Search by Size', sub: 'साइज़ खोजें' },
+          ].map((item, i) => (
+            <a key={i} href={item.href}
+              className="flex items-center gap-2 p-3 bg-steel-50 rounded-lg hover:bg-steel-100 transition-colors">
+              <span className="text-xl">{item.icon}</span>
+              <div className="min-w-0">
+                <div className="text-sm font-medium truncate">{item.label}</div>
+                <div className="text-xs text-steel-400 truncate">{item.sub}</div>
               </div>
-              <div className="text-center">
-                <div className="text-xl font-bold text-green-600">{displayWeight(scrapSummary.total_scrap_kg)}</div>
-                <div className="text-xs text-steel-500">Scrap (रद्दी)</div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Quick actions */}
-        <div className="card">
-          <h2 className="font-semibold mb-3">Quick Actions</h2>
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { href: '/orders', icon: '➕', label: 'New Order', sub: 'नया ऑर्डर' },
-              { href: '/optimization', icon: '⚡', label: 'Optimization', sub: 'काटा' },
-              { href: '/inventory/coils', icon: '🔩', label: 'Add Coil', sub: 'माल जोड़ें' },
-              { href: '/inventory/sheets', icon: '📄', label: 'Add Sheet', sub: 'पत्र जोड़ें' },
-            ].map(item => (
-              <a key={item.href} href={item.href}
-                className="flex items-center gap-2 p-3 bg-steel-50 rounded-lg hover:bg-steel-100 transition-colors">
-                <span className="text-xl">{item.icon}</span>
-                <div className="min-w-0">
-                  <div className="text-sm font-medium truncate">{item.label}</div>
-                  <div className="text-xs text-steel-400 truncate">{item.sub}</div>
-                </div>
-              </a>
-            ))}
-          </div>
+            </a>
+          ))}
         </div>
       </div>
     </div>

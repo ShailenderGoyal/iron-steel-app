@@ -48,6 +48,10 @@ export const inventoryAPI = {
   updateSheet: (id, data) => api.put(`/inventory/sheets/${id}`, data),
   deleteCoil: (id) => api.delete(`/inventory/coils/${id}`),
   deleteSheet: (id) => api.delete(`/inventory/sheets/${id}`),
+  getCoil: (id) => api.get(`/inventory/coils/${id}`),
+  getSheet: (id) => api.get(`/inventory/sheets/${id}`),
+  moveCoil: (id, data) => api.post(`/inventory/coils/${id}/movements`, data),
+  moveSheet: (id, data) => api.post(`/inventory/sheets/${id}/movements`, data),
 };
 
 // Machines

@@ -15,6 +15,21 @@ function calcSheetWeight({ length_mm, width_mm, thickness_mm }) {
   return (length_mm * width_mm * thickness_mm * 7.86) / 1e6;
 }
 
+// Builds a human-readable summary of which tracked fields changed, for the audit log.
+// Returns '' when nothing in `fields` changed between before/after.
+function diffSummary(before, after, fields) {
+  const changes = [];
+  for (const f of fields) {
+    const a = before[f] == null ? before[f] : (before[f]?.toString ? before[f].toString() : before[f]);
+    const b = after[f] == null ? after[f] : (after[f]?.toString ? after[f].toString() : after[f]);
+    if (a !== b && !(a == null && b == null)) changes.push(`${f}: ${a ?? '—'} → ${b ?? '—'}`);
+  }
+  return changes.join('; ');
+}
+
+const COIL_AUDIT_FIELDS = ['od_mm', 'id_mm', 'width_mm', 'gauge_mm', 'hardness', 'grade', 'rust_level', 'supplier', 'purchase_date', 'purchase_price_per_kg', 'notes'];
+const SHEET_AUDIT_FIELDS = ['length_mm', 'width_mm', 'thickness_mm', 'format_preset', 'quantity', 'hardness', 'grade', 'rust_level', 'supplier', 'purchase_date', 'purchase_price_per_kg', 'notes'];
+
 // GET /api/inventory — list all (coils + sheets combined)
 router.get('/', async (req, res) => {
   try {
@@ -59,7 +74,7 @@ router.post('/coils', async (req, res) => {
     // Use a manual weight if one was entered, else the theoretical weight.
     data.weight_kg = (data.weight_kg && Number(data.weight_kg) > 0) ? parseFloat(Number(data.weight_kg).toFixed(3)) : computed;
     if (data.remaining_weight_kg === undefined) data.remaining_weight_kg = data.weight_kg;
-    data.movements = [{ type: 'purchase', weight_kg: data.weight_kg, notes: 'Initial purchase' }];
+    data.movements = [{ type: 'purchase', weight_kg: data.weight_kg, notes: 'Initial purchase', by: req.user._id }];
     const coil = await Coil.create(data);
     await coil.populate('supplier', 'name');
     res.status(201).json(coil);
@@ -81,53 +96,69 @@ router.post('/sheets', async (req, res) => {
       data.weight_kg = parseFloat((computedPer * qty).toFixed(3));
     }
     if (data.remaining_weight_kg === undefined) data.remaining_weight_kg = data.weight_kg;
-    data.movements = [{ type: 'purchase', weight_kg: data.weight_kg, notes: 'Initial purchase' }];
+    data.movements = [{ type: 'purchase', weight_kg: data.weight_kg, notes: 'Initial purchase', by: req.user._id }];
     const sheet = await Sheet.create(data);
     await sheet.populate('supplier', 'name');
     res.status(201).json(sheet);
   } catch (err) { res.status(400).json({ message: err.message }); }
 });
 
-// GET /api/inventory/coils/:id
+// GET /api/inventory/coils/:id — includes the full movements audit log, with who made each change.
 router.get('/coils/:id', async (req, res) => {
   try {
-    const coil = await Coil.findById(req.params.id).populate('supplier', 'name');
+    const coil = await Coil.findById(req.params.id).populate('supplier', 'name').populate('movements.by', 'username');
     if (!coil) return res.status(404).json({ message: 'Not found' });
     res.json(coil);
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-// GET /api/inventory/sheets/:id
+// GET /api/inventory/sheets/:id — includes the full movements audit log, with who made each change.
 router.get('/sheets/:id', async (req, res) => {
   try {
-    const sheet = await Sheet.findById(req.params.id).populate('supplier', 'name');
+    const sheet = await Sheet.findById(req.params.id).populate('supplier', 'name').populate('movements.by', 'username');
     if (!sheet) return res.status(404).json({ message: 'Not found' });
     res.json(sheet);
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-// PUT /api/inventory/coils/:id
+// PUT /api/inventory/coils/:id — full edit, with manual override on any field. Every change is logged.
 router.put('/coils/:id', async (req, res) => {
   try {
-    const before = await Coil.findById(req.params.id).select('weight_kg remaining_weight_kg');
+    const before = await Coil.findById(req.params.id);
     if (!before) return res.status(404).json({ message: 'Not found' });
+    const beforeSnapshot = before.toObject();
+
     const coil = await Coil.findByIdAndUpdate(req.params.id, req.body, { new: true });
     const computed = parseFloat(calcCoilWeight(coil).toFixed(3));
     const newTotal = (req.body.weight_kg && Number(req.body.weight_kg) > 0) ? parseFloat(Number(req.body.weight_kg).toFixed(3)) : computed;
-    const used = Math.max(0, before.weight_kg - before.remaining_weight_kg);
+    const used = Math.max(0, beforeSnapshot.weight_kg - beforeSnapshot.remaining_weight_kg);
     coil.weight_kg = newTotal;
     coil.remaining_weight_kg = parseFloat(Math.max(0, newTotal - used).toFixed(3));
+
+    const fieldChanges = diffSummary(beforeSnapshot, coil.toObject(), COIL_AUDIT_FIELDS);
+    const weightChanged = Math.abs(newTotal - beforeSnapshot.weight_kg) > 0.001;
+    if (fieldChanges || weightChanged) {
+      coil.movements.push({
+        type: 'edit',
+        weight_kg: newTotal,
+        notes: [fieldChanges, weightChanged ? `weight_kg: ${beforeSnapshot.weight_kg} → ${newTotal}` : ''].filter(Boolean).join('; ') || 'Edited',
+        by: req.user._id,
+      });
+    }
+
     await coil.save();
     await coil.populate('supplier', 'name');
     res.json(coil);
   } catch (err) { res.status(400).json({ message: err.message }); }
 });
 
-// PUT /api/inventory/sheets/:id
+// PUT /api/inventory/sheets/:id — full edit, with manual override on any field. Every change is logged.
 router.put('/sheets/:id', async (req, res) => {
   try {
-    const before = await Sheet.findById(req.params.id).select('weight_kg remaining_weight_kg');
+    const before = await Sheet.findById(req.params.id);
     if (!before) return res.status(404).json({ message: 'Not found' });
+    const beforeSnapshot = before.toObject();
+
     const sheet = await Sheet.findByIdAndUpdate(req.params.id, req.body, { new: true });
     const qty = sheet.quantity || 1;
     const computedPer = parseFloat(calcSheetWeight(sheet).toFixed(3));
@@ -139,10 +170,77 @@ router.put('/sheets/:id', async (req, res) => {
       newPer = computedPer;
       newTotal = parseFloat((computedPer * qty).toFixed(3));
     }
-    const used = Math.max(0, before.weight_kg - before.remaining_weight_kg);
+    const used = Math.max(0, beforeSnapshot.weight_kg - beforeSnapshot.remaining_weight_kg);
     sheet.weight_per_sheet_kg = newPer;
     sheet.weight_kg = newTotal;
     sheet.remaining_weight_kg = parseFloat(Math.max(0, newTotal - used).toFixed(3));
+
+    const fieldChanges = diffSummary(beforeSnapshot, sheet.toObject(), SHEET_AUDIT_FIELDS);
+    const weightChanged = Math.abs(newTotal - beforeSnapshot.weight_kg) > 0.001;
+    if (fieldChanges || weightChanged) {
+      sheet.movements.push({
+        type: 'edit',
+        weight_kg: newTotal,
+        notes: [fieldChanges, weightChanged ? `weight_kg: ${beforeSnapshot.weight_kg} → ${newTotal}` : ''].filter(Boolean).join('; ') || 'Edited',
+        by: req.user._id,
+      });
+    }
+
+    await sheet.save();
+    await sheet.populate('supplier', 'name');
+    res.json(sheet);
+  } catch (err) { res.status(400).json({ message: err.message }); }
+});
+
+// POST /api/inventory/coils/:id/movements — quick move IN (received more) or OUT (used/removed),
+// without going through the full edit form. Always logged for the audit trail.
+router.post('/coils/:id/movements', async (req, res) => {
+  try {
+    const { direction, weight_kg, notes } = req.body;
+    const amount = Number(weight_kg);
+    if (!(amount > 0)) return res.status(400).json({ message: 'Enter a weight greater than 0' });
+    const coil = await Coil.findById(req.params.id);
+    if (!coil) return res.status(404).json({ message: 'Not found' });
+
+    if (direction === 'in') {
+      coil.remaining_weight_kg = parseFloat((coil.remaining_weight_kg + amount).toFixed(3));
+      coil.weight_kg = parseFloat(Math.max(coil.weight_kg, coil.remaining_weight_kg).toFixed(3)); // stock grew beyond original
+      coil.movements.push({ type: 'manual_in', weight_kg: amount, notes: notes || 'Stock received', by: req.user._id });
+    } else if (direction === 'out') {
+      if (amount > coil.remaining_weight_kg + 0.001) return res.status(400).json({ message: `Only ${coil.remaining_weight_kg.toFixed(2)} kg remaining` });
+      coil.remaining_weight_kg = parseFloat((coil.remaining_weight_kg - amount).toFixed(3));
+      coil.movements.push({ type: 'manual_out', weight_kg: amount, notes: notes || 'Stock removed', by: req.user._id });
+    } else {
+      return res.status(400).json({ message: "direction must be 'in' or 'out'" });
+    }
+
+    await coil.save();
+    await coil.populate('supplier', 'name');
+    res.json(coil);
+  } catch (err) { res.status(400).json({ message: err.message }); }
+});
+
+// POST /api/inventory/sheets/:id/movements — same as coils, for sheets.
+router.post('/sheets/:id/movements', async (req, res) => {
+  try {
+    const { direction, weight_kg, notes } = req.body;
+    const amount = Number(weight_kg);
+    if (!(amount > 0)) return res.status(400).json({ message: 'Enter a weight greater than 0' });
+    const sheet = await Sheet.findById(req.params.id);
+    if (!sheet) return res.status(404).json({ message: 'Not found' });
+
+    if (direction === 'in') {
+      sheet.remaining_weight_kg = parseFloat((sheet.remaining_weight_kg + amount).toFixed(3));
+      sheet.weight_kg = parseFloat(Math.max(sheet.weight_kg, sheet.remaining_weight_kg).toFixed(3));
+      sheet.movements.push({ type: 'manual_in', weight_kg: amount, notes: notes || 'Stock received', by: req.user._id });
+    } else if (direction === 'out') {
+      if (amount > sheet.remaining_weight_kg + 0.001) return res.status(400).json({ message: `Only ${sheet.remaining_weight_kg.toFixed(2)} kg remaining` });
+      sheet.remaining_weight_kg = parseFloat((sheet.remaining_weight_kg - amount).toFixed(3));
+      sheet.movements.push({ type: 'manual_out', weight_kg: amount, notes: notes || 'Stock removed', by: req.user._id });
+    } else {
+      return res.status(400).json({ message: "direction must be 'in' or 'out'" });
+    }
+
     await sheet.save();
     await sheet.populate('supplier', 'name');
     res.json(sheet);

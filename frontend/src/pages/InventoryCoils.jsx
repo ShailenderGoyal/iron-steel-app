@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { inventoryAPI, suppliersAPI } from '../services/api';
@@ -7,6 +8,14 @@ import { exportToCsv, stampedName } from '../utils/exportCsv';
 import PageHeader from '../components/PageHeader';
 import Modal from '../components/Modal';
 import UnitInput from '../components/UnitInput';
+import { MoveModal, HistoryModal } from '../components/InventoryMovementModals';
+
+const SORT_OPTIONS = [
+  { value: 'date_desc', label: 'Newest arrival first' },
+  { value: 'date_asc', label: 'Oldest arrival first' },
+  { value: 'weight_desc', label: 'Weight: high to low' },
+  { value: 'weight_asc', label: 'Weight: low to high' },
+];
 
 const HARDNESS_LIST = ['soft', 'semi_soft', 'medium', 'medium_hard', 'hard'];
 
@@ -38,15 +47,33 @@ const emptyForm = {
 
 export default function InventoryCoils() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [filter, setFilter] = useState({ hardness: '', gauge_min: '', gauge_max: '', rust_level: '' });
+  const [sort, setSort] = useState('date_desc');
+  const [moveItem, setMoveItem] = useState(null);
+  const [historyId, setHistoryId] = useState(null);
 
-  const { data: inventory, isLoading } = useQuery({
+  const { data: rawInventory, isLoading } = useQuery({
     queryKey: ['inventory', 'coil', filter],
     queryFn: () => inventoryAPI.getAll({ type: 'coil', ...filter }).then(r => r.data.coils),
   });
+
+  const inventory = useMemo(() => {
+    if (!rawInventory) return rawInventory;
+    const sorted = [...rawInventory];
+    switch (sort) {
+      case 'date_asc': sorted.sort((a, b) => new Date(a.purchase_date || a.createdAt) - new Date(b.purchase_date || b.createdAt)); break;
+      case 'weight_desc': sorted.sort((a, b) => b.remaining_weight_kg - a.remaining_weight_kg); break;
+      case 'weight_asc': sorted.sort((a, b) => a.remaining_weight_kg - b.remaining_weight_kg); break;
+      default: sorted.sort((a, b) => new Date(b.purchase_date || b.createdAt) - new Date(a.purchase_date || a.createdAt));
+    }
+    return sorted;
+  }, [rawInventory, sort]);
+
+  const findBuyers = (coil) => navigate(`/customers?type=coil&width=${coil.width_mm}&gauge=${coil.gauge_mm}`);
 
   const { data: suppliers } = useQuery({ queryKey: ['suppliers'], queryFn: () => suppliersAPI.getAll().then(r => r.data) });
 
@@ -127,6 +154,12 @@ export default function InventoryCoils() {
             <label className="label">Gauge Max</label>
             <input type="number" className="input" step="0.01" value={filter.gauge_max} onChange={e => setFilter(f => ({ ...f, gauge_max: e.target.value }))} placeholder="mm" />
           </div>
+          <div className="flex-1 min-w-36">
+            <label className="label">Sort</label>
+            <select className="select" value={sort} onChange={e => setSort(e.target.value)}>
+              {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
           <button onClick={() => setFilter({ hardness: '', gauge_min: '', gauge_max: '', rust_level: '' })} className="btn-secondary self-end">Clear</button>
         </div>
       </div>
@@ -145,7 +178,10 @@ export default function InventoryCoils() {
                   {coil.rust_level && <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${RUST_COLORS[coil.rust_level]}`}>{RUST_LABELS[coil.rust_level]}</span>}
                 </div>
               </div>
-              <div className="flex gap-1">
+              <div className="flex gap-1 flex-wrap justify-end">
+                <button onClick={() => findBuyers(coil)} className="btn-secondary px-2 py-1 text-xs">👥 Buyers</button>
+                <button onClick={() => setMoveItem(coil)} className="btn-secondary px-2 py-1 text-xs">↕ Move</button>
+                <button onClick={() => setHistoryId(coil._id)} className="btn-secondary px-2 py-1 text-xs">🕘</button>
                 <button onClick={() => openEdit(coil)} className="btn-secondary px-2 py-1 text-xs">Edit</button>
                 <button onClick={() => { if (window.confirm('Remove?')) deleteMut.mutate(coil._id); }} className="btn-danger px-2 py-1 text-xs">Del</button>
               </div>
@@ -200,7 +236,10 @@ export default function InventoryCoils() {
                 <td className="px-4 py-3 text-steel-500">{coil.supplier?.name || '—'}</td>
                 <td className="px-4 py-3 text-steel-500">{coil.purchase_date ? new Date(coil.purchase_date).toLocaleDateString() : '—'}</td>
                 <td className="px-4 py-3">
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 flex-wrap">
+                    <button onClick={() => findBuyers(coil)} className="btn-secondary px-2 py-1 text-xs" title="Find parties who buy this size">👥</button>
+                    <button onClick={() => setMoveItem(coil)} className="btn-secondary px-2 py-1 text-xs" title="Move stock in/out">↕</button>
+                    <button onClick={() => setHistoryId(coil._id)} className="btn-secondary px-2 py-1 text-xs" title="View history">🕘</button>
                     <button onClick={() => openEdit(coil)} className="btn-secondary px-2 py-1 text-xs">Edit</button>
                     <button onClick={() => { if (window.confirm('Remove?')) deleteMut.mutate(coil._id); }} className="btn-danger px-2 py-1 text-xs">Del</button>
                   </div>
@@ -277,6 +316,9 @@ export default function InventoryCoils() {
           </div>
         </form>
       </Modal>
+
+      {moveItem && <MoveModal item={moveItem} kind="coil" onClose={() => setMoveItem(null)} />}
+      {historyId && <HistoryModal itemId={historyId} kind="coil" onClose={() => setHistoryId(null)} />}
     </div>
   );
 }

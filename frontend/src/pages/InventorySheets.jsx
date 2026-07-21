@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { inventoryAPI, suppliersAPI } from '../services/api';
@@ -7,8 +8,15 @@ import { exportToCsv, stampedName } from '../utils/exportCsv';
 import PageHeader from '../components/PageHeader';
 import Modal from '../components/Modal';
 import UnitInput from '../components/UnitInput';
+import { MoveModal, HistoryModal } from '../components/InventoryMovementModals';
 
 const HARDNESS_LIST = ['soft', 'semi_soft', 'medium', 'medium_hard', 'hard'];
+const SORT_OPTIONS = [
+  { value: 'date_desc', label: 'Newest arrival first' },
+  { value: 'date_asc', label: 'Oldest arrival first' },
+  { value: 'weight_desc', label: 'Weight: high to low' },
+  { value: 'weight_asc', label: 'Weight: low to high' },
+];
 
 const EXPORT_COLUMNS = [
   { label: 'Format', value: s => (s.format_preset !== 'custom' ? s.format_preset : 'custom') },
@@ -39,16 +47,34 @@ function calcSheetWeight(l, w, t) {
 
 export default function InventorySheets() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [filter, setFilter] = useState({ hardness: '', rust_level: '' });
+  const [sort, setSort] = useState('date_desc');
+  const [moveItem, setMoveItem] = useState(null);
+  const [historyId, setHistoryId] = useState(null);
 
-  const { data: inventory, isLoading } = useQuery({
+  const { data: rawInventory, isLoading } = useQuery({
     queryKey: ['inventory', 'sheet', filter],
     queryFn: () => inventoryAPI.getAll({ type: 'sheet', ...filter }).then(r => r.data.sheets),
   });
   const { data: suppliers } = useQuery({ queryKey: ['suppliers'], queryFn: () => suppliersAPI.getAll().then(r => r.data) });
+
+  const inventory = useMemo(() => {
+    if (!rawInventory) return rawInventory;
+    const sorted = [...rawInventory];
+    switch (sort) {
+      case 'date_asc': sorted.sort((a, b) => new Date(a.purchase_date || a.createdAt) - new Date(b.purchase_date || b.createdAt)); break;
+      case 'weight_desc': sorted.sort((a, b) => b.remaining_weight_kg - a.remaining_weight_kg); break;
+      case 'weight_asc': sorted.sort((a, b) => a.remaining_weight_kg - b.remaining_weight_kg); break;
+      default: sorted.sort((a, b) => new Date(b.purchase_date || b.createdAt) - new Date(a.purchase_date || a.createdAt));
+    }
+    return sorted;
+  }, [rawInventory, sort]);
+
+  const findBuyers = (sheet) => navigate(`/customers?type=sheet&width=${sheet.width_mm}&gauge=${sheet.thickness_mm}`);
 
   const createMut = useMutation({
     mutationFn: inventoryAPI.createSheet,
@@ -124,6 +150,12 @@ export default function InventorySheets() {
               {RUST_LEVELS.map(r => <option key={r} value={r}>{RUST_LABELS[r]}</option>)}
             </select>
           </div>
+          <div className="flex-1 min-w-36">
+            <label className="label">Sort</label>
+            <select className="select" value={sort} onChange={e => setSort(e.target.value)}>
+              {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
           <button onClick={() => setFilter({ hardness: '', rust_level: '' })} className="btn-secondary self-end">Clear</button>
         </div>
       </div>
@@ -143,7 +175,10 @@ export default function InventorySheets() {
                   <span className="text-xs text-steel-500">{sheet.thickness_mm}mm</span>
                 </div>
               </div>
-              <div className="flex gap-1">
+              <div className="flex gap-1 flex-wrap justify-end">
+                <button onClick={() => findBuyers(sheet)} className="btn-secondary px-2 py-1 text-xs">👥 Buyers</button>
+                <button onClick={() => setMoveItem(sheet)} className="btn-secondary px-2 py-1 text-xs">↕ Move</button>
+                <button onClick={() => setHistoryId(sheet._id)} className="btn-secondary px-2 py-1 text-xs">🕘</button>
                 <button onClick={() => openEdit(sheet)} className="btn-secondary px-2 py-1 text-xs">Edit</button>
                 <button onClick={() => { if (window.confirm('Remove?')) deleteMut.mutate(sheet._id); }} className="btn-danger px-2 py-1 text-xs">Del</button>
               </div>
@@ -198,7 +233,10 @@ export default function InventorySheets() {
                 </td>
                 <td className="px-4 py-3 text-steel-500">{sheet.supplier?.name || '—'}</td>
                 <td className="px-4 py-3">
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 flex-wrap">
+                    <button onClick={() => findBuyers(sheet)} className="btn-secondary px-2 py-1 text-xs" title="Find parties who buy this size">👥</button>
+                    <button onClick={() => setMoveItem(sheet)} className="btn-secondary px-2 py-1 text-xs" title="Move stock in/out">↕</button>
+                    <button onClick={() => setHistoryId(sheet._id)} className="btn-secondary px-2 py-1 text-xs" title="View history">🕘</button>
                     <button onClick={() => openEdit(sheet)} className="btn-secondary px-2 py-1 text-xs">Edit</button>
                     <button onClick={() => { if (window.confirm('Remove?')) deleteMut.mutate(sheet._id); }} className="btn-danger px-2 py-1 text-xs">Del</button>
                   </div>
@@ -283,6 +321,9 @@ export default function InventorySheets() {
           </div>
         </form>
       </Modal>
+
+      {moveItem && <MoveModal item={moveItem} kind="sheet" onClose={() => setMoveItem(null)} />}
+      {historyId && <HistoryModal itemId={historyId} kind="sheet" onClose={() => setHistoryId(null)} />}
     </div>
   );
 }

@@ -2,19 +2,15 @@ import { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
+// The system is now focused on 2 things: inventory and party (buyer) records.
+// Orders/Optimization/Production/Machines/Scrap/Stats/Calculator are kept in the code
+// (routes still work) but hidden from navigation per the current requirements.
 const navItems = [
   { path: '/', label: 'Dashboard (डैशबोर्ड)', icon: '📊', exact: true },
   { path: '/inventory/coils', label: 'Coils (माल)', icon: '🔩' },
   { path: '/inventory/sheets', label: 'Sheets (पत्र)', icon: '📄' },
-  { path: '/orders', label: 'Orders (ऑर्डर)', icon: '📋' },
-  { path: '/optimization', label: 'Optimization (अनुकूलन)', icon: '⚡' },
-  { path: '/production', label: 'Production (उत्पादन)', icon: '🏭' },
   { path: '/customers', label: 'Parties (पार्टी)', icon: '👥', ownerOnly: true },
   { path: '/suppliers', label: 'Suppliers (सप्लायर)', icon: '🏢' },
-  { path: '/machines', label: 'Machines (मशीन)', icon: '⚙️' },
-  { path: '/scrap', label: 'Scrap (रद्दी)', icon: '♻️' },
-  { path: '/stats', label: 'Statistics (आँकड़े)', icon: '📈', ownerOnly: true },
-  { path: '/calculator', label: 'Calculator (कैलकुलेटर)', icon: '🧮' },
   { path: '/settings', label: 'Settings (सेटिंग्स)', icon: '🔧' },
 ];
 

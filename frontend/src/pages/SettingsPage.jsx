@@ -66,12 +66,6 @@ export default function SettingsPage() {
 
   if (!form) return <div className="text-steel-400">Loading settings...</div>;
 
-  const updateBreak = (i, key, val) => {
-    const breaks = [...form.break_times];
-    breaks[i] = { ...breaks[i], [key]: val };
-    setForm(f => ({ ...f, break_times: breaks }));
-  };
-
   return (
     <div>
       <PageHeader title="Settings (सेटिंग)" subtitle="System configuration — Owner access required for changes" />
@@ -95,72 +89,15 @@ export default function SettingsPage() {
           </div>
 
           <div>
-            <label className="label">Working Hours / Day</label>
-            <input type="number" className="input w-32" min="1" max="24" step="0.5"
-              value={form.working_hours_per_day}
-              onChange={e => setForm(f => ({ ...f, working_hours_per_day: parseFloat(e.target.value) }))}
-              disabled={!isOwner}
-            />
-          </div>
-
-          <div>
-            <label className="label">Default Quantity Tolerance (%)</label>
+            <label className="label">Low-Stock Alert Threshold (%)</label>
             <div className="flex items-center gap-2">
-              <input type="number" className="input w-32" min="0" max="50"
-                value={form.qty_tolerance_pct}
-                onChange={e => setForm(f => ({ ...f, qty_tolerance_pct: parseInt(e.target.value) }))}
+              <input type="number" className="input w-32" min="0" max="100"
+                value={form.low_stock_threshold_pct ?? 20}
+                onChange={e => setForm(f => ({ ...f, low_stock_threshold_pct: parseInt(e.target.value) }))}
                 disabled={!isOwner}
               />
-              <span className="text-steel-500 text-sm">e.g. 20% = ±20% of ordered quantity</span>
+              <span className="text-steel-500 text-sm">flag items at or below this % remaining on the dashboard</span>
             </div>
-          </div>
-
-          <div>
-            <label className="label">Min Reusable Coil Width (mm)</label>
-            <div className="flex items-center gap-2">
-              <input type="number" className="input w-32" min="0" step="1"
-                value={form.min_reusable_coil_width_mm ?? 25}
-                onChange={e => setForm(f => ({ ...f, min_reusable_coil_width_mm: parseFloat(e.target.value) }))}
-                disabled={!isOwner}
-              />
-              <span className="text-steel-500 text-sm">slit leftover below this = scrap; above = restocked as coil</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Break Times */}
-        <div className="card">
-          <h2 className="font-semibold text-lg mb-4">Break Times</h2>
-          <div className="space-y-3">
-            {form.break_times?.map((b, i) => (
-              <div key={i} className="flex items-center gap-3 p-3 bg-steel-50 rounded-lg">
-                <input
-                  type="checkbox"
-                  checked={b.enabled}
-                  onChange={e => updateBreak(i, 'enabled', e.target.checked)}
-                  disabled={!isOwner}
-                  className="w-4 h-4"
-                />
-                <input
-                  className="input flex-1"
-                  value={b.name}
-                  onChange={e => updateBreak(i, 'name', e.target.value)}
-                  disabled={!isOwner}
-                />
-                <div className="flex items-center gap-1">
-                  <input
-                    type="number" className="input w-20" min="0"
-                    value={b.duration_min}
-                    onChange={e => updateBreak(i, 'duration_min', parseInt(e.target.value))}
-                    disabled={!isOwner}
-                  />
-                  <span className="text-steel-500 text-sm">min</span>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="text-xs text-steel-400 mt-2">
-            Total break: {form.break_times?.filter(b => b.enabled).reduce((s, b) => s + b.duration_min, 0)} min
           </div>
         </div>
       </div>
@@ -213,9 +150,8 @@ export default function SettingsPage() {
         <h2 className="font-semibold text-lg mb-4">Hindi Terms Glossary (हिंदी शब्दावली)</h2>
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
           {[
-            ['Material / Maal', 'माल'], ['Customer / Party', 'पार्टी'], ['Wastage', 'बर्बादी'],
-            ['Cut', 'काटा'], ['Scrap', 'रद्दी / कबाड़'],
-            ['Order', 'ऑर्डर'], ['Width', 'चौड़ाई'], ['Thickness / Gauge', 'मोटाई'], ['Supplier', 'सप्लायर'],
+            ['Material / Maal', 'माल'], ['Customer / Party', 'पार्टी'],
+            ['Width', 'चौड़ाई'], ['Thickness / Gauge', 'मोटाई'], ['Supplier', 'सप्लायर'],
           ].map(([en, hi]) => (
             <div key={en} className="flex items-center justify-between p-2 bg-steel-50 rounded text-sm">
               <span className="text-steel-700">{en}</span>
