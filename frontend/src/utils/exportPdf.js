@@ -1,10 +1,13 @@
-// Generates a clean, properly-paginated A4 PDF. Browsers with an inline PDF viewer (Chrome,
-// Edge, Firefox, Safari — desktop and mobile) open it in a new tab, where the user can view,
-// print, or save it; browsers without one download it directly. Either way this produces a
-// much better result than relying on @media print CSS to lay out an HTML page for paper.
+// Generates a clean, properly-paginated A4 PDF. Browsers with an inline PDF viewer (desktop
+// Chrome/Edge/Firefox/Safari, iPhone Safari) open it in a new tab, where the user can view,
+// print, or save it. Android has no inline viewer, so there it goes to the share sheet
+// instead (see deliverFile.js). Either way this produces a much better result than
+// relying on @media print CSS to lay out an HTML page for paper.
 //
 // jsPDF + jspdf-autotable are dynamically imported so their ~250KB doesn't bloat the main
 // bundle; it's only fetched when a PDF is actually requested.
+
+import { isAndroid, shareOrDownload } from './deliverFile';
 
 const BUSINESS_NAME = 'Rohini Ispat';
 
@@ -105,6 +108,13 @@ export async function exportPdf({ title, subtitle, columns, rows, landscape }) {
     doc.setTextColor(0);
   }
 
+  if (isAndroid) {
+    const date = new Date().toISOString().slice(0, 10);
+    const fileName = `${safeTitle.replace(/[^A-Za-z0-9.]+/g, '-').replace(/^-|-$/g, '')}-${date}.pdf`;
+    await shareOrDownload(doc.output('blob'), fileName, safeTitle);
+    return;
+  }
+
   // A pre-opened window + deferred `location.href` assignment (the usual popup-blocker
   // workaround) turns out to be unreliable here — Chrome can swap the blank tab to a new
   // process before the async PDF build finishes, silently dropping the navigation. A
@@ -119,3 +129,4 @@ export async function exportPdf({ title, subtitle, columns, rows, landscape }) {
   a.click();
   document.body.removeChild(a);
 }
+

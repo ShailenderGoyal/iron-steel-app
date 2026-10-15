@@ -1,0 +1,56 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Release signing key lives OUTSIDE git (see README.md). Without keystore.properties the
+// release build is simply unsigned.
+def keystorePropsFile = rootProject.file('keystore.properties')
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+}
+
+android {
+    namespace = 'com.rohiniispat.app'
+    compileSdk = 36
+
+    defaultConfig {
+        applicationId = 'com.rohiniispat.app'
+        minSdk = 26
+        targetSdk = 36
+        // Bump both whenever a new APK is shipped (only needed for icon/name/URL changes —
+        // the app itself loads the live website, so normal deploys need no new APK).
+        versionCode = 1
+        versionName = '1.0'
+    }
+
+    signingConfigs {
+        release {
+            if (keystorePropsFile.exists()) {
+                storeFile = rootProject.file(keystoreProps['storeFile'])
+                storePassword = keystoreProps['storePassword']
+                keyAlias = keystoreProps['keyAlias']
+                keyPassword = keystoreProps['keyPassword']
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled = true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
+            if (keystorePropsFile.exists()) {
+                signingConfig = signingConfigs.release
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.7.4'
+}

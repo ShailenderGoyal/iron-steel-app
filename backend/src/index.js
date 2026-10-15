@@ -36,6 +36,21 @@ app.use('/api/stats', statsRoutes);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
+// Digital Asset Links: proves to Android that the "Rohini Ispat" app (see android/) belongs to
+// this site, so it opens full-screen with no browser address bar. The fingerprint is the
+// SHA-256 of the app's signing certificate — if the app is ever re-signed with a new key,
+// add its fingerprint here (see android/README.md).
+app.get('/.well-known/assetlinks.json', (req, res) => res.json([{
+  relation: ['delegate_permission/common.handle_all_urls'],
+  target: {
+    namespace: 'android_app',
+    package_name: 'com.rohiniispat.app',
+    sha256_cert_fingerprints: [
+      '81:8B:87:7C:B6:04:8B:D4:F4:9C:64:45:A0:36:D7:7F:9F:03:17:54:BE:64:5B:13:CB:3D:82:17:AB:A4:E9:27',
+    ],
+  },
+}]));
+
 // In production, serve the built React app from this same server (single-service deploy).
 // The frontend calls the API via the relative path '/api', so same-origin means no CORS
 // config and no API base URL to manage.

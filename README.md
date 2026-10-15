@@ -174,7 +174,9 @@ iron-steel-app/
 │   │       ├── productionPlanner.js    # Daily plan generator
 │   │       └── seedData.js             # Initial data seeder
 │   └── .env
+├── android/                      # Android app (see android/README.md)
 └── frontend/
+    ├── public/                   # PWA manifest, icons, service worker, APK download
     └── src/
         ├── App.jsx
         ├── context/AuthContext.jsx
@@ -199,6 +201,19 @@ iron-steel-app/
             ├── ScrapPage.jsx
             └── SettingsPage.jsx
 ```
+
+---
+
+## Android App
+
+The app installs on Android phones as **Rohini Ispat** — full-screen, with its own icon,
+always showing the live site (so every deploy reaches the phone automatically).
+
+- **Install:** on the phone, open
+  `https://iron-steel-app-production.up.railway.app/rohini-ispat.apk` in Chrome, then allow
+  "Install unknown apps" for Chrome when asked.
+- **Or without an APK:** open the site in Chrome → ⋮ menu → **Install app / Add to Home screen**.
+- Building, signing and updating the APK: [android/README.md](android/README.md).
 
 ---
 

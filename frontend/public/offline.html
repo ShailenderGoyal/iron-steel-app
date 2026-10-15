@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>Rohini Ispat — Offline</title>
+  <style>
+    body {
+      margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      background: #0f172a; color: #f1f5f9; padding: 24px; box-sizing: border-box;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; text-align: center;
+    }
+    .card { background: #fff; color: #0f172a; border-radius: 16px; padding: 32px 24px; max-width: 360px; width: 100%; }
+    img { width: 72px; height: 72px; border-radius: 16px; }
+    h1 { font-size: 20px; margin: 16px 0 4px; }
+    p { font-size: 16px; color: #475569; margin: 4px 0; line-height: 1.5; }
+    button {
+      margin-top: 20px; min-height: 48px; width: 100%; border: 0; border-radius: 10px;
+      background: #2563eb; color: #fff; font-size: 16px; font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img src="/icon-192.png" alt="" />
+    <h1>No internet connection</h1>
+    <p>इंटरनेट कनेक्शन नहीं है</p>
+    <p>Check mobile data or Wi-Fi, then try again.</p>
+    <button onclick="location.reload()">Try again (फिर से कोशिश करें)</button>
+  </div>
+</body>
+</html>

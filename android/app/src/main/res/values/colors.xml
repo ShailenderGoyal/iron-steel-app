@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Matches the web app's dark top bar (Tailwind steel-900) -->
+    <color name="barColor">#0F172A</color>
+    <color name="iconBackground">#1E40AF</color>
+</resources>

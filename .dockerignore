@@ -14,3 +14,6 @@
 README.md
 DEPLOY.md
 start.bat
+
+# The Android wrapper app isn't part of the server image
+android

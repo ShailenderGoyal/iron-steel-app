@@ -1,6 +1,8 @@
 // Zero-dependency CSV export. Files open directly in Excel / Google Sheets.
 // A UTF-8 BOM is prepended so Excel renders Hindi (Devanagari) correctly.
 
+import { isAndroid, shareOrDownload, downloadBlob } from './deliverFile';
+
 function escapeCell(v) {
   if (v == null) return '';
   const s = String(v);
@@ -21,14 +23,8 @@ export function exportToCsv(filename, columns, rows) {
   const csv = '﻿' + header + '\r\n' + body;
 
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  if (isAndroid) shareOrDownload(blob, filename, filename);
+  else downloadBlob(blob, filename);
 }
 
 // Adds a date stamp to an export filename: coils -> coils_2026-07-01.csv

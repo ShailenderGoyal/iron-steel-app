@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- LauncherActivity only hands off to the browser, so it shows nothing itself -->
+    <style name="LauncherTheme" parent="@android:style/Theme.Translucent.NoTitleBar">
+        <item name="android:statusBarColor">@color/barColor</item>
+        <item name="android:navigationBarColor">@color/barColor</item>
+    </style>
+</resources>

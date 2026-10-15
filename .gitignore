@@ -21,3 +21,11 @@ yarn-error.log*
 Thumbs.db
 .vscode/
 .idea/
+
+# Android app (android/) — the signing key and its passwords must NEVER be committed.
+# Back them up somewhere safe instead; see android/README.md.
+*.keystore
+*.jks
+keystore.properties
+local.properties
+.gradle/
