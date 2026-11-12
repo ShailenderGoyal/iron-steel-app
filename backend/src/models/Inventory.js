@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const movementSchema = new mongoose.Schema({
-  type: { type: String, enum: ['purchase', 'job_deduction', 'scrap', 'adjustment', 'manual_in', 'manual_out', 'edit'], required: true },
+  type: { type: String, enum: ['purchase', 'job_deduction', 'scrap', 'adjustment', 'manual_in', 'manual_out', 'edit', 'sale', 'sale_return'], required: true },
   weight_kg: { type: Number, required: true },
   reference: { type: String }, // order id or job id
   notes: { type: String },

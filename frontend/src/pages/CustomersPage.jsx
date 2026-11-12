@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { customersAPI } from '../services/api';
@@ -32,6 +32,7 @@ function matchSize(s, filter) {
 export default function CustomersPage() {
   const qc = useQueryClient();
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -272,6 +273,7 @@ export default function CustomersPage() {
                 {c.contact && <div className="text-sm text-steel-500">👤 {c.contact}</div>}
               </div>
               <div className="flex gap-1.5">
+                <button onClick={() => navigate(`/sales?party=${c._id}`)} className="btn-secondary btn-xs">🧾 Sales</button>
                 <button onClick={() => openEdit(c)} className="btn-secondary btn-xs">Edit</button>
                 <button onClick={() => { if (window.confirm('Remove party?')) deleteMut.mutate(c._id); }} className="btn-danger btn-xs">Del</button>
               </div>

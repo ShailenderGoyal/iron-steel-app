@@ -15,6 +15,7 @@ const productionRoutes = require('./routes/production');
 const scrapRoutes = require('./routes/scrap');
 const settingsRoutes = require('./routes/settings');
 const statsRoutes = require('./routes/stats');
+const salesRoutes = require('./routes/sales');
 
 const app = express();
 
@@ -33,6 +34,7 @@ app.use('/api/production', productionRoutes);
 app.use('/api/scrap', scrapRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/stats', statsRoutes);
+app.use('/api/sales', salesRoutes);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 

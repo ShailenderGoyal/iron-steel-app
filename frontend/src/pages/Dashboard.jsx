@@ -62,6 +62,7 @@ export default function Dashboard() {
         <h2 className="font-semibold mb-3">Quick Actions</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {[
+            ...(isOwner ? [{ href: '/sales?new=1', icon: '🧾', label: 'Record Sale', sub: 'बिक्री दर्ज करें' }] : []),
             { href: '/inventory/coils', icon: '🔩', label: 'Add Coil', sub: 'माल जोड़ें' },
             { href: '/inventory/sheets', icon: '📄', label: 'Add Sheet', sub: 'पत्र जोड़ें' },
             { href: '/customers', icon: '👥', label: 'Parties', sub: 'पार्टी' },

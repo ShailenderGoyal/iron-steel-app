@@ -13,6 +13,8 @@ const MOVEMENT_LABELS = {
   scrap: 'Scrap',
   adjustment: 'Adjustment',
   edit: '✏️ Edited',
+  sale: '🧾 Sold',
+  sale_return: '↩️ Sale cancelled — returned',
 };
 
 // Quick weight in/out — for moving stock without opening the full edit form.

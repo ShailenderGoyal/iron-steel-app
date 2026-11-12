@@ -15,6 +15,7 @@ import ProductionPage from './pages/ProductionPage';
 import ScrapPage from './pages/ScrapPage';
 import CalculatorPage from './pages/CalculatorPage';
 import SettingsPage from './pages/SettingsPage';
+import SalesPage from './pages/SalesPage';
 
 // Lazy-loaded: keeps the charting library (recharts) out of the initial bundle.
 const StatsPage = lazy(() => import('./pages/StatsPage'));
@@ -37,6 +38,7 @@ function AppRoutes() {
         <Route path="inventory/sheets" element={<InventorySheets />} />
         <Route path="machines" element={<MachinesPage />} />
         <Route path="customers" element={isOwner ? <CustomersPage /> : <Navigate to="/" replace />} />
+        <Route path="sales" element={isOwner ? <SalesPage /> : <Navigate to="/" replace />} />
         <Route path="orders" element={<OrdersPage />} />
         <Route path="suppliers" element={<SuppliersPage />} />
         <Route path="optimization" element={<OptimizationPage />} />

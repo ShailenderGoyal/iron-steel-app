@@ -9,6 +9,7 @@ const navItems = [
   { path: '/', label: 'Dashboard (डैशबोर्ड)', icon: '📊', exact: true },
   { path: '/inventory/coils', label: 'Coils (माल)', icon: '🔩' },
   { path: '/inventory/sheets', label: 'Sheets (पत्र)', icon: '📄' },
+  { path: '/sales', label: 'Sales (बिक्री)', icon: '🧾', ownerOnly: true },
   { path: '/customers', label: 'Parties (पार्टी)', icon: '👥', ownerOnly: true },
   { path: '/suppliers', label: 'Suppliers (सप्लायर)', icon: '🏢' },
   { path: '/settings', label: 'Settings (सेटिंग्स)', icon: '🔧' },

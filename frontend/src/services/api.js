@@ -54,6 +54,14 @@ export const inventoryAPI = {
   moveSheet: (id, data) => api.post(`/inventory/sheets/${id}/movements`, data),
 };
 
+// Sales
+export const salesAPI = {
+  getAll: (params) => api.get('/sales', { params }),
+  getById: (id) => api.get(`/sales/${id}`),
+  create: (data) => api.post('/sales', data),
+  cancel: (id) => api.patch(`/sales/${id}/cancel`),
+};
+
 // Machines
 export const machinesAPI = {
   getAll: (active) => api.get('/machines', { params: active ? { active: 'true' } : {} }),

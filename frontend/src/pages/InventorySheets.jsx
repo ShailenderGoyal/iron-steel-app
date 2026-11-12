@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { inventoryAPI, suppliersAPI } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { displayWeight, HARDNESS_LABELS, HARDNESS_COLORS, SHEET_PRESETS, RUST_LEVELS, RUST_LABELS, RUST_COLORS } from '../utils/units';
 import { exportToCsv, stampedName } from '../utils/exportCsv';
 import { exportPdf } from '../utils/exportPdf';
@@ -48,6 +49,7 @@ function calcSheetWeight(l, w, t) {
 export default function InventorySheets() {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const { isOwner } = useAuth();
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -176,6 +178,7 @@ export default function InventorySheets() {
                 </div>
               </div>
               <div className="flex gap-1.5 flex-wrap justify-end">
+                {isOwner && <button onClick={() => navigate(`/sales?sell=sheet:${sheet._id}`)} className="btn-success btn-xs">🧾 Sell</button>}
                 <button onClick={() => findBuyers(sheet)} className="btn-secondary btn-xs">👥 Buyers</button>
                 <button onClick={() => setMoveItem(sheet)} className="btn-secondary btn-xs">↕ Move</button>
                 <button onClick={() => setHistoryId(sheet._id)} className="btn-secondary btn-xs" aria-label="View history">🕘 History</button>
@@ -234,6 +237,7 @@ export default function InventorySheets() {
                 <td className="px-4 py-3 text-steel-500">{sheet.supplier?.name || '—'}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-1.5 flex-wrap">
+                    {isOwner && <button onClick={() => navigate(`/sales?sell=sheet:${sheet._id}`)} className="btn-success btn-xs" title="Record a sale of this item" aria-label="Sell this item">🧾</button>}
                     <button onClick={() => findBuyers(sheet)} className="btn-secondary btn-xs" title="Find parties who buy this size" aria-label="Find buyers for this size">👥</button>
                     <button onClick={() => setMoveItem(sheet)} className="btn-secondary btn-xs" title="Move stock in/out" aria-label="Move stock in or out">↕</button>
                     <button onClick={() => setHistoryId(sheet._id)} className="btn-secondary btn-xs" title="View history" aria-label="View change history">🕘</button>
