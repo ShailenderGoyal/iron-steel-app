@@ -13,6 +13,14 @@ const saleItemSchema = new mongoose.Schema({
   rust_level: { type: String },
   weight_kg: { type: Number, required: true },
   pieces: { type: Number }, // sheets only, optional
+  // Coils only: the coil was slit to a narrower width for the party (width_mm above is then the
+  // width they bought). The strip left over is either restocked as a new coil or written off as scrap.
+  source_width_mm: { type: Number }, // width of the coil before cutting
+  strips: { type: Number }, // how many strips of width_mm were cut
+  leftover_width_mm: { type: Number },
+  leftover_weight_kg: { type: Number },
+  leftover_coil: { type: mongoose.Schema.Types.ObjectId }, // the new Coil, when the leftover was restocked
+  leftover_scrapped_kg: { type: Number }, // leftover that did NOT go back to stock (scrap / written off)
 }, { _id: true });
 
 const saleSchema = new mongoose.Schema({

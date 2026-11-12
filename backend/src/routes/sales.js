@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const Sale = require('../models/Sale');
 const Customer = require('../models/Customer');
 const { Coil, Sheet } = require('../models/Inventory');
+const Settings = require('../models/Settings');
 const { protect, ownerOnly } = require('../middleware/auth');
 const router = express.Router();
 
@@ -48,16 +49,35 @@ const undoTakeOut = (Model, id, kg, saleId) => changeStock(Model, id, item => ({
   update: { $set: { remaining_weight_kg: round3(item.remaining_weight_kg + kg) }, $pull: { movements: { type: 'sale', reference: String(saleId) } } },
 }), UNDO_ATTEMPTS);
 
-// Sum the weights per stock item (a sale may list the same item on two lines).
-function totalsPerItem(items) {
+// Everything a line takes from its source coil/sheet: what was sold plus, for a slit coil, the leftover strip
+// (it is restocked as its own coil or written off, but either way it leaves the source).
+const consumedKg = it => round3(it.weight_kg + (it.leftover_weight_kg || 0));
+
+// Sum per stock item (a sale may list the same item on two lines). kgOf says how much each line counts for.
+function totalsPerItem(items, kgOf = consumedKg) {
   const map = new Map();
   for (const it of items) {
     const key = `${it.item_type}:${it.item}`;
-    const cur = map.get(key) || { item_type: it.item_type, id: it.item, kg: 0 };
-    cur.kg = round3(cur.kg + it.weight_kg);
+    const cur = map.get(key) || { item_type: it.item_type, id: it.item, kg: 0, cuts: [] };
+    cur.kg = round3(cur.kg + kgOf(it));
+    if (it.strips) cur.cuts.push(`slit ${it.strips}×${it.width_mm}mm${it.leftover_width_mm ? `, leftover ${it.leftover_width_mm}mm ${it.leftover_coil || it._restock ? '→ new coil' : '→ scrap'}` : ''}`);
     map.set(key, cur);
   }
   return [...map.values()];
+}
+
+// The strip left over from slitting becomes its own (narrower) coil: same gauge, hardness, grade, rust,
+// supplier and cost as the coil it came from.
+function leftoverCoilData(source, it, saleId, partyName, userId) {
+  return {
+    od_mm: source.od_mm, id_mm: source.id_mm,
+    width_mm: it.leftover_width_mm, gauge_mm: source.gauge_mm,
+    hardness: source.hardness, grade: source.grade, rust_level: source.rust_level,
+    supplier: source.supplier, purchase_date: source.purchase_date, purchase_price_per_kg: source.purchase_price_per_kg,
+    weight_kg: it.leftover_weight_kg, remaining_weight_kg: it.leftover_weight_kg,
+    movements: [{ type: 'adjustment', weight_kg: it.leftover_weight_kg, reference: String(saleId), notes: `Leftover ${it.leftover_width_mm}mm strip from slitting a ${source.width_mm}mm coil for ${partyName}`, by: userId }],
+    notes: `Leftover ${it.leftover_width_mm}mm strip from a sale to ${partyName}`,
+  };
 }
 
 // Adds the sold sizes to the party's "Sizes Used" list so they show up in Search-by-Size later.
@@ -109,6 +129,7 @@ router.get('/:id', async (req, res) => {
 // body: { customer, sale_date, bill_no, vehicle_no, notes, items: [{ item_type, item, weight_kg, pieces? }] }
 router.post('/', async (req, res) => {
   const done = []; // stock changes made so far, so they can be undone if something later fails
+  const newCoils = []; // leftover coils created so far, removed again if the sale fails
   const saleId = new mongoose.Types.ObjectId();
   try {
     const { customer: customerId, sale_date, bill_no, vehicle_no, notes, items: lines } = req.body;
@@ -116,8 +137,12 @@ router.post('/', async (req, res) => {
     const customer = await Customer.findById(customerId);
     if (!customer || !customer.isActive) throw fail(400, 'Choose a party for this sale');
 
+    const settings = await Settings.findOne({ singleton_key: 'app_settings' });
+    const cutoff = settings?.min_reusable_coil_width_mm ?? 25; // leftover strips narrower than this are scrap
+
     // 1. Check everything before touching stock, and snapshot each line from the live stock item.
     const items = [];
+    const sources = []; // the live stock doc behind each line (needed to build a leftover coil)
     for (const [i, line] of lines.entries()) {
       const Model = MODELS[line.item_type];
       if (!Model) throw fail(400, `Item ${i + 1}: choose a coil or sheet`);
@@ -126,7 +151,7 @@ router.post('/', async (req, res) => {
       const stock = await Model.findById(line.item);
       if (!stock || !stock.isActive) throw fail(400, `Item ${i + 1}: this stock item is no longer available`);
       const pieces = Number(line.pieces);
-      items.push({
+      const entry = {
         item_type: line.item_type, item: stock._id,
         width_mm: stock.width_mm,
         thickness_mm: line.item_type === 'coil' ? stock.gauge_mm : stock.thickness_mm,
@@ -134,19 +159,53 @@ router.post('/', async (req, res) => {
         hardness: stock.hardness, grade: stock.grade, rust_level: stock.rust_level,
         weight_kg: weight,
         pieces: line.item_type === 'sheet' && pieces > 0 ? pieces : undefined,
-      });
+      };
+
+      // A coil can be slit to a narrower width: the party buys the cut width, and whatever is left of the
+      // coil's width comes back as a narrower coil (or is scrap if it is too narrow to use).
+      const cutW = Number(line.cut_width_mm);
+      if (cutW) {
+        if (line.item_type !== 'coil') throw fail(400, `Item ${i + 1}: only coils can be cut to a width`);
+        const strips = line.strips === undefined || line.strips === '' ? 1 : Number(line.strips);
+        if (!Number.isInteger(strips) || strips < 1) throw fail(400, `Item ${i + 1}: number of strips must be a whole number, 1 or more`);
+        if (!(cutW > 0) || cutW >= stock.width_mm) throw fail(400, `Item ${i + 1}: cut width must be narrower than the ${stock.width_mm}mm coil`);
+        const usedW = round3(strips * cutW);
+        if (usedW > stock.width_mm + 0.001) throw fail(400, `Item ${i + 1}: ${strips} × ${cutW}mm = ${usedW}mm is wider than the ${stock.width_mm}mm coil`);
+        const leftoverW = round3(Math.max(0, stock.width_mm - usedW));
+        // The leftover strip runs the same length as the sold strips, so it weighs in proportion to its width
+        // (same rule as the cutting optimizer). It can be overridden with the real weighed figure.
+        const given = line.leftover_weight_kg === undefined || line.leftover_weight_kg === null || line.leftover_weight_kg === '' ? null : Number(line.leftover_weight_kg);
+        if (given !== null && !(given >= 0)) throw fail(400, `Item ${i + 1}: leftover weight can't be negative`);
+        const leftoverKg = leftoverW > 0 ? (given !== null ? round3(given) : round3(weight * leftoverW / usedW)) : 0;
+        const restock = leftoverW >= cutoff && leftoverKg > 0 && line.restock_leftover !== false;
+        Object.assign(entry, {
+          width_mm: cutW, source_width_mm: stock.width_mm, strips,
+          leftover_width_mm: leftoverW, leftover_weight_kg: leftoverKg,
+          leftover_scrapped_kg: restock ? 0 : leftoverKg,
+        });
+        entry._restock = restock;
+      }
+      items.push(entry);
+      sources.push(stock);
     }
     const totals = totalsPerItem(items);
     for (const t of totals) {
       const stock = await MODELS[t.item_type].findById(t.id);
-      if (t.kg > stock.remaining_weight_kg + 0.001) throw fail(400, `Only ${stock.remaining_weight_kg.toFixed(2)} kg left of ${sizeLabel(stock)} — you entered ${t.kg} kg`);
+      if (t.kg > stock.remaining_weight_kg + 0.001) throw fail(400, `Only ${stock.remaining_weight_kg.toFixed(2)} kg left of ${sizeLabel(stock)} — this needs ${t.kg} kg${t.cuts.length ? ' (sold + leftover strip)' : ''}`);
     }
 
     // 2. Take the stock out, one movement per stock item, recorded in its history.
     const note = `Sold to ${customer.name}${bill_no ? ` (bill ${bill_no})` : ''}`;
     for (const t of totals) {
-      await takeOut(MODELS[t.item_type], t.id, t.kg, { type: 'sale', weight_kg: t.kg, reference: String(saleId), notes: note, by: req.user._id });
+      await takeOut(MODELS[t.item_type], t.id, t.kg, { type: 'sale', weight_kg: t.kg, reference: String(saleId), notes: `${note}${t.cuts.length ? ` — ${t.cuts.join('; ')}` : ''}`, by: req.user._id });
       done.push(t);
+    }
+    // ...and restock each leftover strip as its own coil.
+    for (const [i, it] of items.entries()) {
+      if (!it._restock) continue;
+      const coil = await Coil.create(leftoverCoilData(sources[i], it, saleId, customer.name, req.user._id));
+      newCoils.push(coil._id);
+      it.leftover_coil = coil._id;
     }
 
     // 3. Save the sale itself.
@@ -162,6 +221,7 @@ router.post('/', async (req, res) => {
     await sale.populate('customer', 'name phone');
     res.status(201).json(sale);
   } catch (err) {
+    if (newCoils.length) await Coil.deleteMany({ _id: { $in: newCoils } }).catch(e => console.error('Could not remove leftover coils after failed sale:', e.message));
     for (const t of done) {
       try { await undoTakeOut(MODELS[t.item_type], t.id, t.kg, saleId); }
       catch (e) { console.error('Could not undo stock change after failed sale:', t, e.message); }
@@ -182,10 +242,27 @@ router.patch('/:id/cancel', async (req, res) => {
       { status: 'cancelled', cancelled_at: new Date(), cancelled_by: req.user._id });
     if (!claimed) return res.status(400).json({ message: 'This sale is already cancelled' });
 
+    // What goes back to each source: the sold weight, plus the leftover strip's weight unless that leftover is
+    // now a coil that has already been (partly) used or sold — then it stays and only the sold part returns.
+    const removeCoils = [];
+    const restoreKg = new Map();
+    for (const it of sale.items) {
+      let kg = it.weight_kg;
+      if (it.leftover_weight_kg) {
+        if (!it.leftover_coil) kg += it.leftover_weight_kg;
+        else {
+          const lc = await Coil.findById(it.leftover_coil);
+          const untouched = lc && Math.abs(lc.remaining_weight_kg - lc.weight_kg) < 0.001;
+          if (untouched) { kg += it.leftover_weight_kg; removeCoils.push(lc._id); }
+        }
+      }
+      restoreKg.set(String(it._id), round3(kg));
+    }
     const note = `Sale cancelled${sale.bill_no ? ` (bill ${sale.bill_no})` : ''} — ${sale.customer?.name || 'party'}`;
-    for (const t of totalsPerItem(sale.items)) {
+    for (const t of totalsPerItem(sale.items, it => restoreKg.get(String(it._id)))) {
       await putBack(MODELS[t.item_type], t.id, t.kg, { type: 'sale_return', weight_kg: t.kg, reference: String(sale._id), notes: note, by: req.user._id });
     }
+    if (removeCoils.length) await Coil.deleteMany({ _id: { $in: removeCoils } });
     res.json(await Sale.findById(sale._id).populate('customer', 'name phone'));
   } catch (err) { res.status(err.status || 400).json({ message: err.message }); }
 });

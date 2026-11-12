@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { salesAPI, customersAPI, inventoryAPI } from '../services/api';
+import { salesAPI, customersAPI, inventoryAPI, settingsAPI } from '../services/api';
 import { displayWeight, HARDNESS_LABELS, RUST_LABELS } from '../utils/units';
 import { exportToCsv } from '../utils/exportCsv';
 import { exportPdf } from '../utils/exportPdf';
@@ -12,12 +12,18 @@ import SearchableSelect from '../components/SearchableSelect';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const round3 = n => Math.round(n * 1000) / 1000;
-const newLine = (ref = '') => ({ key: Math.random().toString(36).slice(2), ref, weight: '', pieces: '' });
+const newLine = (ref = '') => ({ key: Math.random().toString(36).slice(2), ref, weight: '', pieces: '', cut: '', strips: '1', leftoverKg: '', restock: true });
 const fmtDate = d => new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 
 const sizeOf = it => (it.item_type === 'sheet'
   ? `${it.length_mm} × ${it.width_mm} × ${it.thickness_mm}mm`
   : `${it.width_mm}mm × ${it.thickness_mm}mm`);
+
+// What happened to the strip left over after slitting a coil ('' for an uncut line).
+const leftoverText = it => {
+  if (!it.strips || !it.leftover_width_mm) return '';
+  return it.leftover_coil ? `${it.leftover_width_mm}mm strip (${it.leftover_weight_kg} kg) back in stock` : `${it.leftover_width_mm}mm strip (${it.leftover_weight_kg} kg) scrap`;
+};
 
 const EXPORT_COLUMNS = [
   { label: 'Date', value: r => fmtDate(r.sale.sale_date) },
@@ -26,6 +32,9 @@ const EXPORT_COLUMNS = [
   { label: 'Vehicle', value: r => r.sale.vehicle_no },
   { label: 'Type', value: r => (r.item.item_type === 'sheet' ? 'Sheet' : 'Coil') },
   { label: 'Size', value: r => sizeOf(r.item) },
+  { label: 'Cut from width (mm)', value: r => r.item.source_width_mm },
+  { label: 'Strips', value: r => r.item.strips },
+  { label: 'Leftover', value: r => leftoverText(r.item) },
   { label: 'Hardness', value: r => HARDNESS_LABELS[r.item.hardness] || r.item.hardness },
   { label: 'Pieces', value: r => r.item.pieces },
   { label: 'Weight (kg)', value: r => r.item.weight_kg },
@@ -132,12 +141,17 @@ export default function SalesPage() {
               </div>
               <div className="divide-y divide-steel-100 border-t border-steel-100">
                 {sale.items.map(it => (
-                  <div key={it._id} className="flex items-center justify-between gap-2 py-2 text-sm">
+                  <div key={it._id} className="flex flex-wrap items-center justify-between gap-x-2 py-2 text-sm">
                     <div>
                       {it.item_type === 'sheet' ? '📄' : '🔩'} <span className="font-medium">{sizeOf(it)}</span>
                       <span className="text-steel-500"> · {HARDNESS_LABELS[it.hardness] || it.hardness}{it.rust_level && it.rust_level !== 'prime' ? ` · ${RUST_LABELS[it.rust_level]}` : ''}</span>
                     </div>
                     <div className="text-steel-700 flex-shrink-0">{it.pieces ? `${it.pieces} pcs · ` : ''}{displayWeight(it.weight_kg)}</div>
+                    {it.strips > 0 && (
+                      <div className="basis-full text-xs text-steel-500">
+                        ✂️ Cut from a {it.source_width_mm}mm coil{it.strips > 1 ? ` — ${it.strips} strips` : ''}{leftoverText(it) ? ` · leftover ${leftoverText(it)}` : ''}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -171,6 +185,9 @@ function NewSaleModal({ customers, defaultCustomer, presetItem, onClose }) {
   const [form, setForm] = useState({ customer: defaultCustomer || '', sale_date: today(), bill_no: '', vehicle_no: '', notes: '' });
   const [lines, setLines] = useState([newLine(presetItem)]);
 
+  const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: () => settingsAPI.get().then(r => r.data) });
+  const cutoff = settings?.min_reusable_coil_width_mm ?? 25; // leftover strips narrower than this are scrap
+
   const { data: stock } = useQuery({ queryKey: ['inventory', 'sale-picker'], queryFn: () => inventoryAPI.getAll().then(r => r.data) });
 
   // Everything still in stock, keyed "coil:<id>" / "sheet:<id>".
@@ -192,8 +209,29 @@ function NewSaleModal({ customers, defaultCustomer, presetItem, onClose }) {
   const updateLine = (key, patch) => setLines(ls => ls.map(l => (l.key === key ? { ...l, ...patch } : l)));
   const pickItem = (key, ref) => updateLine(key, { ref, weight: '', pieces: '' });
 
+  // Slitting a coil: the party gets strips of the cut width and the rest of the coil's width is left over.
+  // The leftover runs the same length, so it weighs in proportion to its width (editable: real weights differ).
+  const cutOf = line => {
+    const it = items.get(line.ref);
+    const w = parseFloat(line.weight) || 0;
+    if (!it || it.kind !== 'coil' || line.cut === '') return null;
+    const cutW = parseFloat(line.cut);
+    const strips = parseInt(line.strips || '1', 10);
+    if (!(cutW > 0) || cutW >= it.width_mm) return { error: `Cut width must be narrower than the ${it.width_mm}mm coil` };
+    if (!(strips >= 1)) return { error: 'Strips must be 1 or more' };
+    const usedW = round3(strips * cutW);
+    if (usedW > it.width_mm + 0.001) return { error: `${strips} × ${cutW}mm = ${usedW}mm is wider than the ${it.width_mm}mm coil` };
+    const leftoverW = round3(Math.max(0, it.width_mm - usedW));
+    const autoKg = leftoverW > 0 && w > 0 ? round3(w * leftoverW / usedW) : 0;
+    const leftoverKg = leftoverW > 0 ? (line.leftoverKg !== '' ? (parseFloat(line.leftoverKg) || 0) : autoKg) : 0;
+    const restockable = leftoverW >= cutoff && leftoverKg > 0;
+    return { cutW, strips, usedW, leftoverW, autoKg, leftoverKg, restockable, restock: restockable && line.restock, width: it.width_mm };
+  };
+  // Everything a line takes out of its coil/sheet: what's sold plus any leftover strip.
+  const consumedBy = line => (parseFloat(line.weight) || 0) + (cutOf(line)?.leftoverKg || 0);
+
   // Weight taken by the other lines from the same item, so the "left" figure is honest.
-  const usedElsewhere = (line) => lines.filter(l => l.key !== line.key && l.ref === line.ref).reduce((s, l) => s + (parseFloat(l.weight) || 0), 0);
+  const usedElsewhere = (line) => lines.filter(l => l.key !== line.key && l.ref === line.ref).reduce((s, l) => s + consumedBy(l), 0);
   const leftFor = line => { const it = items.get(line.ref); return it ? round3(it.remaining_weight_kg - usedElsewhere(line)) : 0; };
 
   const setPieces = (line, pieces) => {
@@ -224,13 +262,20 @@ function NewSaleModal({ customers, defaultCustomer, presetItem, onClose }) {
       if (!l.ref) { toast.error(`Item ${i + 1}: choose what is being sold`); return; }
       const w = parseFloat(l.weight);
       if (!(w > 0)) { toast.error(`Item ${i + 1}: enter a weight`); return; }
-      if (w > leftFor(l) + 0.001) { toast.error(`Item ${i + 1}: only ${leftFor(l).toFixed(2)} kg available`); return; }
+      const c = cutOf(l);
+      if (c?.error) { toast.error(`Item ${i + 1}: ${c.error}`); return; }
+      if (consumedBy(l) > leftFor(l) + 0.001) { toast.error(`Item ${i + 1}: only ${leftFor(l).toFixed(2)} kg available${c ? ' (sold + leftover strip)' : ''}`); return; }
     }
     saveMut.mutate({
       ...form,
       items: lines.map(l => {
         const [item_type, item] = l.ref.split(':');
-        return { item_type, item, weight_kg: parseFloat(l.weight), ...(item_type === 'sheet' && l.pieces ? { pieces: Number(l.pieces) } : {}) };
+        const c = cutOf(l);
+        return {
+          item_type, item, weight_kg: parseFloat(l.weight),
+          ...(item_type === 'sheet' && l.pieces ? { pieces: Number(l.pieces) } : {}),
+          ...(c ? { cut_width_mm: c.cutW, strips: c.strips, restock_leftover: c.restock, ...(l.leftoverKg !== '' ? { leftover_weight_kg: parseFloat(l.leftoverKg) } : {}) } : {}),
+        };
       }),
     });
   };
@@ -270,6 +315,8 @@ function NewSaleModal({ customers, defaultCustomer, presetItem, onClose }) {
             const it = items.get(l.ref);
             const left = leftFor(l);
             const w = parseFloat(l.weight) || 0;
+            const cut = cutOf(l);
+            const need = consumedBy(l);
             return (
               <div key={l.key} className="mb-3 p-3 bg-steel-50 rounded-lg space-y-2">
                 <div className="flex items-start gap-2">
@@ -292,10 +339,52 @@ function NewSaleModal({ customers, defaultCustomer, presetItem, onClose }) {
                       <input type="number" min="0" step="0.001" className="input" value={l.weight} onChange={e => updateLine(l.key, { weight: e.target.value })} placeholder="kg" />
                     </div>
                     <div>
-                      <button type="button" onClick={() => updateLine(l.key, { weight: String(left), pieces: '' })} className="btn-secondary btn-xs w-full">Sell all ({left.toFixed(1)} kg)</button>
+                      <button type="button" onClick={() => updateLine(l.key, { weight: String(cut && !cut.error ? round3(left * cut.usedW / cut.width) : left), pieces: '', leftoverKg: '' })} className="btn-secondary btn-xs w-full">Sell all ({left.toFixed(1)} kg)</button>
                     </div>
-                    <div className={`col-span-2 sm:col-span-3 text-sm ${w > left + 0.001 ? 'text-red-600 font-medium' : 'text-steel-500'}`}>
-                      {w > left + 0.001 ? `Only ${left.toFixed(2)} kg available` : `${displayWeight(left)} available → ${displayWeight(round3(left - w))} left after this sale`}
+                    {it.kind === 'coil' && (
+                      <>
+                        <div>
+                          <label className="text-sm text-steel-600">Cut to width (mm) — optional</label>
+                          <input type="number" min="0" step="0.1" className="input" value={l.cut} onChange={e => updateLine(l.key, { cut: e.target.value, leftoverKg: '' })} placeholder={`blank = full ${it.width_mm}mm`} />
+                        </div>
+                        {l.cut !== '' && (
+                          <div>
+                            <label className="text-sm text-steel-600">Strips of that width</label>
+                            <input type="number" min="1" step="1" className="input" value={l.strips} onChange={e => updateLine(l.key, { strips: e.target.value, leftoverKg: '' })} />
+                          </div>
+                        )}
+                      </>
+                    )}
+                    {cut?.error && <div className="col-span-2 sm:col-span-3 text-sm text-red-600 font-medium">{cut.error}</div>}
+                    {cut && !cut.error && (
+                      <div className="col-span-2 sm:col-span-3 rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+                        <div className="text-sm font-medium text-amber-900">✂️ Cutting {cut.strips} × {cut.cutW}mm from the {cut.width}mm coil — party gets {cut.cutW}mm</div>
+                        {cut.leftoverW > 0 ? (
+                          <>
+                            <div className="text-sm text-steel-700">Leftover: a <strong>{cut.leftoverW}mm</strong> strip</div>
+                            <div className="grid grid-cols-2 gap-2 items-end">
+                              <div>
+                                <label className="text-sm text-steel-600">Leftover weight (kg)</label>
+                                <input type="number" min="0" step="0.001" className="input" value={l.leftoverKg !== '' ? l.leftoverKg : (cut.autoKg || '')} onChange={e => updateLine(l.key, { leftoverKg: e.target.value })} placeholder="auto" />
+                              </div>
+                              {cut.restockable ? (
+                                <label className="flex items-center gap-2 text-sm min-h-11">
+                                  <input type="checkbox" className="w-5 h-5" checked={l.restock} onChange={e => updateLine(l.key, { restock: e.target.checked })} />
+                                  Add leftover to stock
+                                </label>
+                              ) : (
+                                <div className="text-sm text-amber-800 min-h-11 flex items-center">{cut.leftoverW < cutoff ? `Under ${cutoff}mm — counted as scrap` : 'No weight — nothing to add to stock'}</div>
+                              )}
+                            </div>
+                            <div className="text-xs text-steel-500">Weight is worked out from the width ratio — change it if you weighed the strip.{cut.restockable && !l.restock ? ' Not added to stock: written off.' : ''}</div>
+                          </>
+                        ) : <div className="text-sm text-steel-700">No leftover — the whole coil width is used.</div>}
+                      </div>
+                    )}
+                    <div className={`col-span-2 sm:col-span-3 text-sm ${need > left + 0.001 ? 'text-red-600 font-medium' : 'text-steel-500'}`}>
+                      {need > left + 0.001
+                        ? `Only ${left.toFixed(2)} kg available${cut ? ` — this needs ${displayWeight(round3(need))} (sold + leftover)` : ''}`
+                        : `${displayWeight(left)} available → ${displayWeight(round3(left - need))} left after this sale`}
                     </div>
                   </div>
                 )}
@@ -303,7 +392,7 @@ function NewSaleModal({ customers, defaultCustomer, presetItem, onClose }) {
             );
           })}
           <div className="text-right font-semibold">Total: {displayWeight(totalKg)}</div>
-          <div className="text-sm text-steel-500">Selling less than what's in stock is fine — the rest stays in stock. These sizes are also added to the party's "Sizes Used" list.</div>
+          <div className="text-sm text-steel-500">Selling less than what's in stock is fine — the rest stays in stock. A coil can be cut to a narrower width; the leftover strip goes back into stock as its own coil. These sizes are also added to the party's "Sizes Used" list.</div>
         </div>
 
         <div className="flex justify-end gap-2 pt-2">
