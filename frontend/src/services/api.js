@@ -43,6 +43,7 @@ export const inventoryAPI = {
   getAll: (params) => api.get('/inventory', { params }),
   getStats: () => api.get('/inventory/summary/stats'),
   createCoil: (data) => api.post('/inventory/coils', data),
+  createCoilsBulk: (data) => api.post('/inventory/coils/bulk', data),
   createSheet: (data) => api.post('/inventory/sheets', data),
   updateCoil: (id, data) => api.put(`/inventory/coils/${id}`, data),
   updateSheet: (id, data) => api.put(`/inventory/sheets/${id}`, data),
@@ -60,6 +61,7 @@ export const salesAPI = {
   getById: (id) => api.get(`/sales/${id}`),
   create: (data) => api.post('/sales', data),
   cancel: (id) => api.patch(`/sales/${id}/cancel`),
+  dispatch: (id, data) => api.patch(`/sales/${id}/dispatch`, data),
 };
 
 // Machines

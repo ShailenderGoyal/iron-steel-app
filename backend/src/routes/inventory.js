@@ -85,6 +85,45 @@ router.post('/coils', async (req, res) => {
   } catch (err) { res.status(400).json({ message: err.message }); }
 });
 
+// POST /api/inventory/coils/bulk — add several coils in one go. Each row can say "count" to add that many
+// identical coils; every coil becomes its own record (own remaining weight and history). All-or-nothing:
+// if any row is invalid nothing is saved.
+// body: { supplier, purchase_date, notes, coils: [{ width_mm, gauge_mm, od_mm?, id_mm?, hardness, grade, rust_level, weight_kg?, count }] }
+const BULK_MAX_COILS = 200;
+router.post('/coils/bulk', async (req, res) => {
+  try {
+    const { supplier, purchase_date, notes, coils: rows } = req.body;
+    if (!Array.isArray(rows) || rows.length === 0) return res.status(400).json({ message: 'Add at least one coil' });
+
+    const docs = [];
+    for (const [i, row] of rows.entries()) {
+      const label = `Row ${i + 1}`;
+      const count = row.count === undefined || row.count === '' || row.count === null ? 1 : Number(row.count);
+      if (!Number.isInteger(count) || count < 1) return res.status(400).json({ message: `${label}: number of coils must be a whole number, 1 or more` });
+      if (!(Number(row.width_mm) > 0) || !(Number(row.gauge_mm) > 0)) return res.status(400).json({ message: `${label}: enter the width and gauge` });
+      const computed = parseFloat(calcCoilWeight(row).toFixed(3));
+      const manual = row.weight_kg && Number(row.weight_kg) > 0;
+      if (!manual && !(computed > 0)) return res.status(400).json({ message: `${label}: enter the weight of each coil, or OD + ID to calculate it` });
+      const weight = manual ? parseFloat(Number(row.weight_kg).toFixed(3)) : computed;
+      for (let n = 0; n < count; n++) {
+        docs.push({
+          od_mm: row.od_mm || undefined, id_mm: row.id_mm || undefined,
+          width_mm: Number(row.width_mm), gauge_mm: Number(row.gauge_mm),
+          hardness: row.hardness || 'soft', grade: row.grade || 'grade_1', rust_level: row.rust_level || 'prime',
+          supplier: supplier || undefined, purchase_date: purchase_date || undefined,
+          notes: row.notes || notes || undefined,
+          weight_kg: weight, remaining_weight_kg: weight,
+          movements: [{ type: 'purchase', weight_kg: weight, notes: 'Initial purchase', by: req.user._id }],
+        });
+      }
+    }
+    if (docs.length > BULK_MAX_COILS) return res.status(400).json({ message: `That is ${docs.length} coils — add at most ${BULK_MAX_COILS} at a time` });
+
+    const created = await Coil.insertMany(docs);
+    res.status(201).json({ count: created.length, total_weight_kg: parseFloat(created.reduce((t, c) => t + c.weight_kg, 0).toFixed(3)) });
+  } catch (err) { res.status(400).json({ message: err.message }); }
+});
+
 // POST /api/inventory/sheets
 router.post('/sheets', async (req, res) => {
   try {

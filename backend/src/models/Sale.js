@@ -21,6 +21,16 @@ const saleItemSchema = new mongoose.Schema({
   leftover_weight_kg: { type: Number },
   leftover_coil: { type: mongoose.Schema.Types.ObjectId }, // the new Coil, when the leftover was restocked
   leftover_scrapped_kg: { type: Number }, // leftover that did NOT go back to stock (scrap / written off)
+  // Sheets only: sheets were cut down to a smaller size (length_mm / width_mm above are then the size the
+  // party bought). What is left of each sheet is up to two pieces, restocked as new sheets or scrap.
+  source_length_mm: { type: Number },
+  sheet_leftovers: [{
+    _id: false,
+    length_mm: { type: Number },
+    width_mm: { type: Number },
+    weight_kg: { type: Number },
+    sheet: { type: mongoose.Schema.Types.ObjectId }, // the new Sheet record, when restocked
+  }],
 }, { _id: true });
 
 const saleSchema = new mongoose.Schema({
@@ -32,6 +42,10 @@ const saleSchema = new mongoose.Schema({
   items: { type: [saleItemSchema], validate: v => v.length > 0 },
   total_weight_kg: { type: Number, required: true },
   status: { type: String, enum: ['active', 'cancelled'], default: 'active' },
+  // Stock leaves at the time of the sale; dispatch records whether the goods have actually gone out.
+  dispatch_status: { type: String, enum: ['not_dispatched', 'dispatched'], default: 'not_dispatched' },
+  dispatched_at: { type: Date },
+  dispatched_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   cancelled_at: { type: Date },
   cancelled_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

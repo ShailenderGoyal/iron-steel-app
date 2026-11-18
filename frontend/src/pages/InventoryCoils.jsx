@@ -10,6 +10,7 @@ import { exportPdf } from '../utils/exportPdf';
 import PageHeader from '../components/PageHeader';
 import Modal from '../components/Modal';
 import { MoveModal, HistoryModal } from '../components/InventoryMovementModals';
+import BulkCoilsModal from '../components/BulkCoilsModal';
 
 const SORT_OPTIONS = [
   { value: 'date_desc', label: 'Newest arrival first' },
@@ -44,6 +45,7 @@ const emptyForm = {
   hardness: 'soft', grade: 'grade_1', rust_level: 'prime',
   supplier: '', purchase_date: new Date().toISOString().slice(0, 10), notes: '',
   weight_kg: null, weight_manual: false,
+  count: 1, // add mode only: how many identical coils arrived
 };
 
 export default function InventoryCoils() {
@@ -57,6 +59,7 @@ export default function InventoryCoils() {
   const [sort, setSort] = useState('date_desc');
   const [moveItem, setMoveItem] = useState(null);
   const [historyId, setHistoryId] = useState(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   const { data: rawInventory, isLoading } = useQuery({
     queryKey: ['inventory', 'coil', filter],
@@ -82,6 +85,13 @@ export default function InventoryCoils() {
   const createMut = useMutation({
     mutationFn: inventoryAPI.createCoil,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['inventory'] }); qc.invalidateQueries({ queryKey: ['inventory-stats'] }); toast.success('Coil added'); setShowModal(false); },
+    onError: e => toast.error(e.response?.data?.message || 'Error'),
+  });
+
+  // Several identical coils that arrived together: one record per coil, each with its own weight and history.
+  const createManyMut = useMutation({
+    mutationFn: inventoryAPI.createCoilsBulk,
+    onSuccess: res => { qc.invalidateQueries({ queryKey: ['inventory'] }); qc.invalidateQueries({ queryKey: ['inventory-stats'] }); toast.success(`${res.data.count} coils added`); setShowModal(false); },
     onError: e => toast.error(e.response?.data?.message || 'Error'),
   });
 
@@ -111,10 +121,17 @@ export default function InventoryCoils() {
 
   const handleSubmit = e => {
     e.preventDefault();
-    const data = { ...form, weight_kg: effectiveWeight };
+    const { count, ...rest } = form;
+    const data = { ...rest, weight_kg: effectiveWeight };
     if (!data.supplier) delete data.supplier;
-    if (editing) updateMut.mutate({ id: editing, data });
-    else createMut.mutate(data);
+    if (editing) { updateMut.mutate({ id: editing, data }); return; }
+    const n = parseInt(count, 10) || 1;
+    if (n > 1) {
+      createManyMut.mutate({
+        supplier: data.supplier, purchase_date: data.purchase_date, notes: data.notes,
+        coils: [{ width_mm: data.width_mm, gauge_mm: data.gauge_mm, od_mm: data.od_mm, id_mm: data.id_mm, hardness: data.hardness, grade: data.grade, rust_level: data.rust_level, weight_kg: data.weight_kg, count: n }],
+      });
+    } else createMut.mutate(data);
   };
 
   return (
@@ -126,6 +143,7 @@ export default function InventoryCoils() {
           <div className="flex gap-2 flex-wrap">
             <button onClick={() => exportToCsv(stampedName('coils'), EXPORT_COLUMNS, inventory || [])} className="btn-secondary">⬇️ Excel</button>
             <button onClick={() => exportPdf({ title: 'Coil Inventory', subtitle: `${inventory?.length || 0} coils in stock`, columns: EXPORT_COLUMNS, rows: inventory || [], landscape: true })} className="btn-secondary">📄 PDF</button>
+            <button onClick={() => setBulkOpen(true)} className="btn-secondary">➕ Add Several</button>
             <button onClick={openAdd} className="btn-primary">+ Add Coil</button>
           </div>
         }
@@ -325,17 +343,30 @@ export default function InventoryCoils() {
             </div>
             <div className="text-blue-600 text-sm mt-1">{form.weight_manual ? '✏️ manual override' : '(π/4) × (OD² − ID²) × Width × 0.00786 — type to override'}</div>
           </div>
+          {!editing && (
+            <div>
+              <label className="label">Number of identical coils</label>
+              <input type="number" min="1" step="1" className="input" value={form.count} onChange={e => setForm(f => ({ ...f, count: e.target.value }))} />
+              {(parseInt(form.count, 10) || 1) > 1 && (
+                <div className="text-sm text-steel-500 mt-1">
+                  {parseInt(form.count, 10)} separate coils will be added, each {effectiveWeight > 0 ? displayWeight(effectiveWeight) : 'with the weight above'}
+                  {effectiveWeight > 0 ? ' — ' + displayWeight(effectiveWeight * parseInt(form.count, 10)) + ' in all' : ''}.
+                </div>
+              )}
+            </div>
+          )}
           <div>
             <label className="label">Notes</label>
             <textarea className="input" rows={2} value={form.notes || ''} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={() => setShowModal(false)} className="btn-secondary">Cancel</button>
-            <button type="submit" className="btn-primary" disabled={createMut.isPending || updateMut.isPending}>{editing ? 'Update' : 'Add Coil'}</button>
+            <button type="submit" className="btn-primary" disabled={createMut.isPending || createManyMut.isPending || updateMut.isPending}>{editing ? 'Update' : (parseInt(form.count, 10) || 1) > 1 ? `Add ${parseInt(form.count, 10)} Coils` : 'Add Coil'}</button>
           </div>
         </form>
       </Modal>
 
+      {bulkOpen && <BulkCoilsModal suppliers={suppliers || []} onClose={() => setBulkOpen(false)} />}
       {moveItem && <MoveModal item={moveItem} kind="coil" onClose={() => setMoveItem(null)} />}
       {historyId && <HistoryModal itemId={historyId} kind="coil" onClose={() => setHistoryId(null)} />}
     </div>
