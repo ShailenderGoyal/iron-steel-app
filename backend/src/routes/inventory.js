@@ -94,12 +94,16 @@ router.post('/coils/bulk', async (req, res) => {
   try {
     const { supplier, purchase_date, notes, coils: rows } = req.body;
     if (!Array.isArray(rows) || rows.length === 0) return res.status(400).json({ message: 'Add at least one coil' });
+    if (rows.length > BULK_MAX_COILS) return res.status(400).json({ message: `Too many rows — add at most ${BULK_MAX_COILS} coils at a time` });
 
     const docs = [];
+    let planned = 0; // running total of coils across rows, checked BEFORE anything is built so a huge count can't use up memory
     for (const [i, row] of rows.entries()) {
       const label = `Row ${i + 1}`;
       const count = row.count === undefined || row.count === '' || row.count === null ? 1 : Number(row.count);
       if (!Number.isInteger(count) || count < 1) return res.status(400).json({ message: `${label}: number of coils must be a whole number, 1 or more` });
+      planned += count;
+      if (planned > BULK_MAX_COILS) return res.status(400).json({ message: `That is more than ${BULK_MAX_COILS} coils — add at most ${BULK_MAX_COILS} at a time` });
       if (!(Number(row.width_mm) > 0) || !(Number(row.gauge_mm) > 0)) return res.status(400).json({ message: `${label}: enter the width and gauge` });
       const computed = parseFloat(calcCoilWeight(row).toFixed(3));
       const manual = row.weight_kg && Number(row.weight_kg) > 0;
@@ -117,7 +121,6 @@ router.post('/coils/bulk', async (req, res) => {
         });
       }
     }
-    if (docs.length > BULK_MAX_COILS) return res.status(400).json({ message: `That is ${docs.length} coils — add at most ${BULK_MAX_COILS} at a time` });
 
     const created = await Coil.insertMany(docs);
     res.status(201).json({ count: created.length, total_weight_kg: parseFloat(created.reduce((t, c) => t + c.weight_kg, 0).toFixed(3)) });
