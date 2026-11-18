@@ -127,6 +127,8 @@ router.get('/', async (req, res) => {
     // Sales saved before dispatch tracking existed have no value, so "not dispatched" means "anything but dispatched".
     if (dispatch === 'dispatched') filter.dispatch_status = 'dispatched';
     if (dispatch === 'not_dispatched') filter.dispatch_status = { $ne: 'dispatched' };
+    // A cancelled sale has nothing to dispatch, so it doesn't belong under either dispatch filter.
+    if (dispatch && !status) filter.status = 'active';
     if (from || to) {
       filter.sale_date = {};
       if (from) filter.sale_date.$gte = new Date(from);
